@@ -1,0 +1,38 @@
+name: Build signed Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm test
+      - name: Build and sign installer
+        run: pnpm build:win
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      - name: Generate secure update manifest
+        run: pnpm release:manifest
+        env:
+          UPDATE_DOWNLOAD_URL: ${{ secrets.UPDATE_DOWNLOAD_URL }}
+          RELEASE_NOTES: ${{ github.event.head_commit.message }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-account-manager-windows
+          path: |
+            release/*.exe
+            release/latest.json

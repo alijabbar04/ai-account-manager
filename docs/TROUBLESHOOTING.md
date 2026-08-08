@@ -1,7 +1,8 @@
 # Troubleshooting
 
 Grouped by when the problem happens. Each entry gives the message you actually
-see, what is really going on, and the fix.
+see, what is really going on, and the fix. Every message quoted here is taken
+from the shipped runtime.
 
 ---
 
@@ -9,59 +10,21 @@ see, what is really going on, and the fix.
 
 ### Nothing happens when I launch it
 
-The most likely cause is the **single-instance lock**. The app deliberately
-allows only one copy at a time, so a second launch exits immediately and looks
-like a crash.
+Most likely the **single-instance lock**. Only one copy runs at a time, so a
+second launch exits immediately and looks like a crash.
 
-Check Task Manager for an existing **AI Account Manager** process — or an
-`electron` process if you are running from source — and close it, or just use the
-window that is already open. This is also the number one cause of a failed build
-or a Playwright run reporting "browser closed": `build\build.ps1` kills stray
-instances for you before building for exactly this reason.
+Check Task Manager for an existing **AI Account Manager** process (or `electron`
+if running from source) and close it, or use the window already open. This is
+also the top cause of a failed build — `build\build.ps1` closes stray instances
+for you first.
 
-If there is genuinely no instance running:
-
-- Check your antivirus quarantine. Unsigned installers are a common false
-  positive.
-- Reinstall from the Releases page.
-
-### Running from source, `npm start` exits without a window
-
-`ELECTRON_RUN_AS_NODE` is set in your environment. With that variable present,
-`electron .` starts as plain Node, runs nothing, and exits silently. Some tools
-set it and it is inherited by every new shell.
-
-Clear it in the **same** command that launches the app, because every new shell
-inherits it again:
-
-```powershell
-Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; npm start
-```
-
-**Use `Remove-Item`, not `$env:ELECTRON_RUN_AS_NODE = $null`.** Assigning `$null`
-leaves the variable defined as an empty string, which Electron still treats as
-set — so the app keeps failing in a way that looks like the fix did not work.
-
-The failure is not always silent. If the variable is set to an empty string you
-may instead get a native crash with `Assertion failed:
-(isolate_data->snapshot_data()) != nullptr` in `node::CreateEnvironment` and exit
-code 134. Same cause, same fix.
-
-### `npm start` fails, or `node_modules\electron\dist\electron.exe` is missing
-
-Electron downloads its ~150 MB binary in a postinstall step, and corporate
-proxies often block it silently — leaving an install that looks complete.
-
-```powershell
-node node_modules\electron\install.js
-```
-
-`setup.ps1` checks for this and retries automatically. If it still fails you are
-behind a proxy: set `HTTPS_PROXY` and re-run.
+If there is genuinely nothing running: check your antivirus quarantine (unsigned
+installers are a common false positive), then reinstall from Releases.
 
 ### Windows says "Windows protected your PC"
 
-Expected — the installer is not code-signed. **More info** → **Run anyway**.
+Expected — the build is unsigned unless `CSC_LINK` was set at build time.
+**More info** → **Run anyway**.
 
 ### PowerShell refuses to run `setup.ps1` or `build.ps1`
 
@@ -69,7 +32,27 @@ Expected — the installer is not code-signed. **More info** → **Run anyway**.
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-Run once in the same window, then retry. It affects only that window.
+Once, in the same window. Affects only that window.
+
+### Running from source, the app exits without a window
+
+`ELECTRON_RUN_AS_NODE` is set in your environment — with it set, Electron starts
+as plain Node and exits silently. Some tools set it, and it is inherited by every
+new shell. Clear it in the **same** command:
+
+```powershell
+$env:ELECTRON_RUN_AS_NODE = $null; npm run build:dir
+```
+
+### `node_modules\electron\dist\electron.exe` is missing
+
+Electron's ~150 MB postinstall download was blocked, usually by a proxy.
+
+```powershell
+node node_modules\electron\install.js
+```
+
+`setup.ps1` retries this automatically. If it still fails, set `HTTPS_PROXY`.
 
 ---
 
@@ -77,25 +60,11 @@ Run once in the same window, then retry. It affects only that window.
 
 ### It looks like a completely fresh install
 
-If you previously ran this app under its former name, its data is in a folder
-named after the old branding and the renamed build does not look there.
+The data directory is `%APPDATA%\ClaudeAccountManager` and was **deliberately
+not renamed** when the app was rebranded, precisely so upgrades keep working. If
+it looks empty, that folder is missing or was moved.
 
-Nothing is lost, but **two folders need copying, not one** — see
-[INSTALL.md](INSTALL.md#upgrading-from-claude-account-manager) for the full
-explanation. Close the app, then:
-
-```powershell
-Copy-Item "$env:APPDATA\ClaudeAccountManager" "$env:APPDATA\AIAccountManager" -Recurse
-Copy-Item "$env:APPDATA\Claude Account Manager\Local State" `
-          "$env:APPDATA\AI Account Manager\Local State" -Force
-```
-
-Reopen the app and everything is back. Copy rather than move until you have
-confirmed it worked.
-
-### All state lives outside the app folder
-
-For reference, everything the app persists is in `%APPDATA%\AIAccountManager\`:
+Everything the app persists lives there:
 
 | File | Holds |
 |---|---|
@@ -106,8 +75,7 @@ For reference, everything the app persists is in `%APPDATA%\AIAccountManager\`:
 | `api-keys-vault.json` | API key **secrets**, DPAPI-encrypted |
 | `api-usage-snapshots.json` | API usage history for trends |
 
-Deleting the folder resets the app completely. Nothing here is ever committed to
-the repository.
+Deleting that folder resets the app completely. Nothing there is ever committed.
 
 ---
 
@@ -115,97 +83,90 @@ the repository.
 
 ### "Session expired — log in again from a terminal"
 
-The usage API returned 401 or 403, and the stored refresh token could not
-produce a new access token — usually because the refresh token was revoked, or
-was rotated by signing in to the same account somewhere else.
+The usage API returned 401/403 and the stored refresh token could not produce a
+new access token — usually revoked, or rotated by signing in elsewhere.
 
-Fix: launch a terminal for that account from the app and run:
+Launch a terminal for that account from the app and run `claude auth login`.
 
-```powershell
-claude auth login
-```
+### "The Claude sign-in has expired. Sign in again from the account card."
 
-Sign in in the browser. The card recovers on the next refresh.
+Same cause, surfaced by the alerts system rather than the dashboard. Same fix.
 
-### "Not logged in"
+### "Account name is required." / an account already exists
 
-That profile folder has no credentials file yet — the account was created but
-never signed in, or the folder was cleared. Launch a terminal for it and run
-`claude auth login`.
-
-### "Offline or unreachable: ..."
-
-A network error, not an auth problem. The app falls back to local estimates
-derived from transcripts, so the card still shows something, marked as an
-estimate. It corrects itself when connectivity returns.
-
-### "Folder does not exist" when importing
-
-The path typed or picked is not there. Import expects the profile directory
-itself — for the default account that is `C:\Users\<you>\.claude`, not its
-parent, and not `.claude.json`.
-
-### "That folder is already registered as an account."
-
-Two accounts cannot point at the same directory — that would defeat the
-isolation the app exists to provide. Rename or remove the existing entry first.
-
-### "An account named ... already exists."
-
-Names must be unique. Rename the existing account or choose a different name.
+Names must be unique and non-empty. Two accounts also cannot point at the same
+directory — that would defeat the isolation the app exists to provide.
 
 ### A launched terminal is using the wrong account
 
-Two known causes:
+Two causes:
 
 1. **VS Code was already running.** Windows hands the new window to the existing
-   VS Code process, which keeps *its own* environment rather than the one the app
-   injected. Close VS Code completely first, or use a terminal launch.
+   process, which keeps its own environment. Close VS Code fully, or use a
+   terminal launch.
 2. **A default is set.** **Set Default** writes the user-level
-   `CLAUDE_CONFIG_DIR` variable, which every *new* terminal inherits. Clear the
-   default, or launch explicitly from the app.
+   `CLAUDE_CONFIG_DIR`, which every *new* terminal inherits. Clear it, or launch
+   explicitly from the app.
 
-Terminals that are already open never change account — the environment is fixed
-when the process starts.
+Terminals already open never change account — environment is fixed at start.
 
-### The default account behaves as if it were signed out
+### The default account behaves as if signed out
 
-This is the one genuine trap in the underlying mechanism, and the app already
-handles it — but it is worth knowing if you set the variable yourself.
+The one genuine trap in the underlying mechanism. With `CLAUDE_CONFIG_DIR`
+**unset**, Claude Code reads `.claude.json` from your home directory. Set it
+explicitly to that same `.claude` folder and Claude Code looks *inside* the
+folder, finds nothing, and forks fresh state.
 
-With `CLAUDE_CONFIG_DIR` **unset**, Claude Code reads `.claude.json` from your
-home directory, as a sibling of the `.claude` folder. Set the variable explicitly
-to that same `.claude` folder and Claude Code instead looks *inside* the folder,
-finds nothing, and forks fresh state.
-
-So: **never point `CLAUDE_CONFIG_DIR` at the default `~\.claude` directory.** The
-app launches the default profile with the variable deliberately unset.
+**Never point `CLAUDE_CONFIG_DIR` at the default `~\.claude` directory.** The app
+launches the default profile with the variable deliberately unset.
 
 ### "Could not persist the default CLAUDE_CONFIG_DIR (value did not stick)."
 
 Setting a user-scope environment variable broadcasts a system-wide change
-notification, which can time out on a busy machine even though the registry write
-succeeded. The app confirms by reading the value back, so this message means the
-value genuinely is not there.
-
-Retry. If it keeps failing, set it by hand:
+notification that can time out on a busy machine even when the registry write
+succeeded. The app confirms by reading back, so this means the value genuinely is
+not there. Retry, or set it by hand:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("CLAUDE_CONFIG_DIR", "C:\Users\<you>\.claude-work", "User")
 ```
 
-Then open a **new** terminal — existing ones keep the old value.
+Then open a **new** terminal.
 
 ### "VS Code ('code') was not found on PATH."
 
-The `code` command is not installed. Open VS Code, press `Ctrl+Shift+P`, and run
-**Shell Command: Install 'code' command in PATH**, then open a new terminal.
+Open VS Code, `Ctrl+Shift+P`, run **Shell Command: Install 'code' command in
+PATH**, then open a new terminal.
 
-### "Refusing to delete a folder outside your home directory."
+---
 
-A deliberate guard. *Also delete the folder* only removes directories under your
-home folder, so a mis-registered path cannot be used to delete something
-elsewhere on the disk. Delete it manually if you are certain.
+## GPT / Codex problems
+
+### "Codex is not installed or is not available on PATH."
+
+The app searches the standard Windows locations — Codex Desktop, an npm global
+install, the VS Code extension, and WindowsApps. None matched.
+
+Confirm with `codex --version` in a terminal. If that works but the app still
+cannot find it, your install is somewhere unusual; the discovery paths are in
+`app/dist-electron/main.cjs` (searched for `"OpenAI", "Codex", "bin"`,
+`"openai.chatgpt-"` and `"codex-win32-x64"`).
+
+### "Codex is not signed in with a ChatGPT account."
+
+Codex is installed but has no ChatGPT session. Sign in through Codex itself; the
+app only reads what Codex already knows.
+
+### "Codex usage did not respond in time. Make sure Codex is installed and signed in."
+
+Codex was found and started but did not answer before the timeout. Usually a slow
+first run or a Codex process wedged in the background. Retry; if it persists, run
+Codex once by hand to confirm it responds.
+
+### "Codex initialization failed."
+
+Codex was located but would not start. Run it directly in a terminal — the error
+it prints there is the real one.
 
 ---
 
@@ -213,80 +174,108 @@ elsewhere on the disk. Delete it manually if you are certain.
 
 ### "OS encryption (DPAPI) is unavailable, so the key cannot be stored securely. Aborting."
 
-The app **refuses to store a key in plaintext** — this is intended behaviour, not
-a bug.
+The app **refuses to store a key in plaintext** — intended behaviour.
 
-Electron's `safeStorage` reports unavailable when the OS keyring cannot be
-reached. On Windows this normally means a damaged or unusual user profile, or a
-sandboxed/temporary account. Try running as your normal Windows user. Do not work
-around it by storing the key elsewhere in the repo.
+`safeStorage` reports unavailable when the OS keyring cannot be reached, usually
+a damaged, sandboxed or temporary Windows profile. Run as your normal user. Do
+not work around it by putting the key somewhere else.
 
 ### "Stored key could not be decrypted"
 
-There are two causes, and the common one is fixable without re-entering anything.
+Two causes; the common one is fixable without re-entering anything.
 
-**1. You copied the app data but not `Local State` (most likely).** If every key
-reports this at once, straight after moving data between installs or renaming the
-app, the vault is fine — the *master key* is missing.
+**1. The `safeStorage` master key did not come with the data.** If *every* key
+reports this at once, right after moving data between installs or renaming the
+app, the vault is fine — the master key is missing.
 
-Electron's `safeStorage` generates one random master key, DPAPI-wraps it, and
-stores it in `Local State` inside Electron's own userData folder
-(`%APPDATA%\<productName>`) — **not** in the app-data folder holding
-`api-keys-vault.json`. A fresh install mints a new master key, so the copied
-ciphertext cannot be opened. Close the app and carry the master key across:
+Electron's `safeStorage` does not DPAPI-wrap each secret. It generates one random
+master key, DPAPI-wraps that, and stores it in a `Local State` file inside
+**Electron's own userData folder** (`%APPDATA%\<productName>`) — a *different*
+directory from the one holding `api-keys-vault.json`. A fresh install mints a new
+master key, so copied ciphertext cannot be opened. Close the app and carry the
+key across:
 
 ```powershell
 Copy-Item "$env:APPDATA\<old productName>\Local State" `
           "$env:APPDATA\<new productName>\Local State" -Force
 ```
 
-Reopen the app; the keys decrypt immediately. Back up the destination file first
-if you want to be able to undo it.
+Back up the destination first if you want to be able to undo it. Reopen the app
+and the keys decrypt immediately.
 
-**2. The vault really was written by a different Windows user or machine.** DPAPI
-is scoped to the user that encrypted it, so the ciphertext is genuinely
-unreadable here — by design, and `Local State` will not help because it is
-DPAPI-protected the same way. Remove each key in the app and add it again.
+**2. The vault genuinely came from another Windows user or machine.** DPAPI is
+scoped to the user that encrypted it, so the ciphertext is unreadable here by
+design — and `Local State` will not help, because it is DPAPI-protected the same
+way. Remove each key and add it again.
 
 Telling them apart: cause 1 hits **every** key at once immediately after a move
-or rename; cause 2 follows carrying files to a different user account or PC.
+or rename; cause 2 follows carrying files to a different user or PC.
 
-### "That doesn't look like a valid key for this provider."
+### "Key rejected (401) — invalid or revoked"
 
-The key does not match that provider's expected prefix — for example an
-`sk-ant-…` key pasted into the OpenAI provider. Check the provider selection and
-that the whole key was copied.
+The provider refused the key outright. Check it was pasted whole and is still
+active in the provider's console.
 
-### My Anthropic or OpenAI pages show no spend
+### "Forbidden (403) — this key lacks permission (may need an admin/management key)"
 
-**This is expected, not a fault.** Neither provider exposes cost or usage to an
-ordinary API key, and neither has a balance API at all. A standard key can only
-be validated.
+The key is valid but not permitted to read the endpoint being queried. See the
+admin-key entries below.
 
-To see spend you need an **organisation Admin key** (`sk-ant-admin…` for
-Anthropic, an admin key for OpenAI), which only an organisation owner can create.
+### "Requires an Anthropic admin key." / "Requires an OpenAI admin key."
 
-There is also a workaround that needs no special key: the **"Measured locally"**
+Neither provider exposes cost or usage to an ordinary key, and neither has a
+balance API at all. A standard key can only be validated.
+
+Related messages, all the same underlying limitation:
+
+- *"This key can make API requests, but organization analytics require an
+  sk-ant-admin key."*
+- *"Standard keys cannot read organization analytics."*
+- *"Project keys cannot read organization analytics."*
+- *"Anthropic does not expose key balances."*
+
+Since 1.4.1 the app checks this **at the point you add the key**, so you learn
+immediately rather than from an empty dashboard.
+
+There is also a workaround needing no special key: the **"Measured locally"**
 panel on the Anthropic provider page reads a shared local ledger of real token
-counts recorded by other in-house tools. Click **📖 Usage guide** on the provider
-page for the full explanation, or read
-[USAGE_TRACKING_GUIDE.pdf](USAGE_TRACKING_GUIDE.pdf).
+counts recorded by other in-house tools. Click **📖 Usage guide** on that page,
+or read [USAGE_TRACKING_GUIDE.pdf](../assets/USAGE_TRACKING_GUIDE.pdf).
 
-For what each provider genuinely exposes, see
-[API_ANALYTICS_RESEARCH.md](API_ANALYTICS_RESEARCH.md).
+### "The key is recognized as an admin key, but one or more organization permissions are missing."
 
-### Gemini shows estimates only
+The right *kind* of key, but its role lacks a permission the analytics endpoints
+need. Grant the missing organisation permissions in the provider console.
 
-AI Studio keys are inference-only — there is no usage, cost or balance endpoint
-to read. The app labels these figures **Estimated** rather than implying
-precision it does not have.
+### "The key can be validated, but Google does not expose billing or usage totals for AI Studio keys."
+
+Gemini AI Studio keys are inference-only. Figures are labelled **Estimated**
+rather than implying precision that does not exist.
 
 ### Charts are empty on a brand new key
 
-The app is not a proxy, so it cannot see traffic it did not make. Trends are
-derived by snapshotting each provider's cumulative counters over time and
-diffing them, which needs at least two snapshots. OpenRouter is the exception —
-it reports live windows immediately.
+The app is not a proxy and cannot see traffic it did not make. Trends come from
+snapshotting each provider's cumulative counters over time and diffing them,
+which needs at least two snapshots. OpenRouter is the exception — it reports live
+windows immediately.
+
+---
+
+## Update problems
+
+### "Update manifest is missing a version, HTTPS download URL, or SHA-256 checksum."
+
+Deliberate refusal. The app will not offer an update unless the manifest carries
+all three, and the download URL is HTTPS.
+
+Regenerate it properly:
+
+```powershell
+$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.4.1.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.4.1.exe'
+```
+
+Plain HTTP, a missing digest, or a hand-edited manifest will always be rejected.
 
 ---
 
@@ -295,60 +284,51 @@ it reports live windows immediately.
 ### "AIEnvironmentManager.exe not found."
 
 Skills Sync is a front end over the separate AI Environment Manager engine — this
-app never touches skill files itself. The engine is not installed, or is not in
-one of the locations searched (the Desktop, `%LOCALAPPDATA%\Programs`, or a
-sibling repo `dist` folder).
-
-Install it, or use the button on the Skills Sync page to open it directly.
-
-### "Engine returned no JSON output."
-
-The engine ran but produced nothing parseable — usually a crash or a version
-whose JSON verbs differ. Run it by hand to see the raw output:
-
-```powershell
-& "<path>\AIEnvironmentManager.exe" --skills-status --json
-```
-
-Note that engine exit code 2 means "completed with failures", which the app
-handles as a partial success rather than an error.
+app never touches skill files itself. Install the engine, or use the button on
+the Skills Sync page to open it directly. Engine exit code 2 means "completed
+with failures" and is handled as a partial success, not an error.
 
 ---
 
 ## Build and test problems
 
-### `npm run dist` fails to overwrite files
+### `npm test` fails after I edited something in `app/`
+
+That is the runtime verification doing its job. `scripts/verify-runtime.cjs`
+asserts that required IPC channels, Codex discovery paths, preload bridges and UI
+strings are still present. Read which assertion failed — it names exactly what
+went missing.
+
+Most common self-inflicted causes:
+
+- Renaming `app/dist/assets/index-CfQCNBzk.js`. The test asserts that exact
+  filename. **Do not rename the asset files.**
+- Deleting an IPC channel string (`account/usage/read`, `claude:history`,
+  `alerts:get`, `alerts:set`, `updates:check`).
+- Reintroducing the removed `"View all other accounts →"` button, which is
+  asserted *absent*.
+
+### electron-builder cannot overwrite files
 
 A copy of the app is running and holding a lock. Close it, or use
-`.\build\build.ps1`, which kills stray instances first.
+`.\build\build.ps1`, which does that first.
 
-### `npm run verify` reports "browser closed" immediately
+### The installer built but is unsigned
 
-Same single-instance lock — close any running copy before starting a Playwright
-run.
-
-### `npm run verify` fails on usage assertions
-
-`verify.mjs` expects at least one registered profile and a signed-in default
-`~\.claude` for its live-usage checks. Use `npm test` instead if you only want
-the pure logic tests, which need neither.
-
-### Should I ever run a test against a real API key?
-
-No. `npm run verify:api` runs with `CAM_FAKE_PROVIDERS=1` and mock provider data
-precisely so it never needs one. Keep it that way.
+Expected unless `CSC_LINK` and `CSC_KEY_PASSWORD` are set in the environment.
+`build.ps1` prints which mode it used. Certificates are never stored in the
+repository; CI reads them from encrypted repository secrets.
 
 ---
 
 ## Still stuck
 
-Include, when reporting a problem:
+Include:
 
 - what you clicked and what you expected;
-- the exact error text from the app;
-- whether you are running the installed build or from source, and the version
-  from `package.json`;
-- output of `claude --version` and `node --version`.
+- the exact error text;
+- installed build or from source, and the version from `package.json`;
+- output of `claude --version`, `codex --version` and `node --version`.
 
 **Never paste an API key, an OAuth token, or the contents of
-`api-keys-vault.json` into a bug report.**
+`api-keys-vault.json` or `Local State` into a bug report.**

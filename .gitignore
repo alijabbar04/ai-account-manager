@@ -2,47 +2,50 @@
 #  Dependencies and build output
 # ---------------------------------------------------------------------------
 node_modules/
-dist/
-dist-electron/
-release/
-scripts/shots/
-scripts/.test-launcher-bundle.cjs
-build/icon-256.png
+release/*
+!release/latest.example.json
 
-# Packaged binaries are distributed via GitHub Releases, never committed.
+# Packaged binaries go to GitHub Releases, never into the repository.
 *.exe
 *.msi
 *.blockmap
 *.nupkg
 *.asar
 
-# NOTE: build/ itself is a TRACKED folder here - it holds icon.ico
-# (electron-builder buildResources) and build.ps1. Do not blanket-ignore it.
+# NOTE: app/ is TRACKED - it is this project's source of record (formatted
+# runtime JS, not build output). Never add app/ or app/dist* to this file.
+# NOTE: build/ is TRACKED - it holds icon.ico and build.ps1.
 
 # ---------------------------------------------------------------------------
 #  SECRETS - never commit
 # ---------------------------------------------------------------------------
-# The app keeps its own state in %APPDATA%\AIAccountManager, outside this
-# repository, so these should never appear here. They are listed anyway so an
-# accidental copy into the working tree cannot be staged.
+# Code-signing material. electron-builder reads CSC_LINK / CSC_KEY_PASSWORD
+# from the environment; CI reads them from encrypted repository secrets.
+*.pfx
+*.p12
+*.pem
+*.key
+.env
+.env.*
+secrets.json
+credentials.json
+
+# App state. It lives in %APPDATA%\ClaudeAccountManager, outside this repo -
+# listed so an accidental copy into the working tree cannot be staged.
 api-keys.json            # API key metadata
 api-keys-vault.json      # DPAPI-encrypted API key secrets
-profiles.json            # account names + profile folder paths
+profiles.json            # account names and profile folder paths
 settings.json
 usage-snapshots.json
 api-usage-snapshots.json
+alerts.json
+Local State              # Electron safeStorage master key
 .credentials.json        # Claude Code OAuth tokens
 .claude.json
 *.jsonl                  # usage ledgers
 
-.env
-.env.*
-*.key
-*.pem
-*.p12
-*.pfx
-secrets.json
-credentials.json
+# Real update manifests carry live download URLs and digests.
+release/latest.json
 
 # ---------------------------------------------------------------------------
 #  Session / browser / credential stores
@@ -59,23 +62,19 @@ Cookies-journal
 *.db
 
 # ---------------------------------------------------------------------------
-#  Logs and diagnostics
+#  Logs, diagnostics, screenshots
 # ---------------------------------------------------------------------------
 *.log
 logs/
 npm-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # Screenshots can capture real account names and usage figures.
-scripts/shots/*.png
-*.screenshot.png
-
-# ---------------------------------------------------------------------------
-#  Python (not used by this project, listed for safety)
-# ---------------------------------------------------------------------------
-__pycache__/
-*.pyc
-*.pyo
+*.png
+!build/*.png
+*.jpg
+*.jpeg
 
 # ---------------------------------------------------------------------------
 #  Editor / OS

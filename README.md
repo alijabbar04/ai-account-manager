@@ -1,24 +1,50 @@
 # AI Account Manager
 
 **A Windows desktop app for running several Claude Code accounts on one machine,
-plus a dashboard for tracking AI provider API keys.**
+tracking GPT/Codex usage beside them, and monitoring your AI provider API keys.**
 
 Claude Code keeps its entire session — OAuth tokens, settings, history — in one
 configuration directory, and reads the `CLAUDE_CONFIG_DIR` environment variable
-to decide which directory that is. One folder therefore equals one fully
-isolated account. AI Account Manager turns that mechanism into a dashboard: each
-account lives in its own folder, stays signed in independently, and can be
-launched into a terminal or VS Code with the right environment already injected —
-no repeated logins and no juggling environment variables by hand. Alongside that
-it tracks your API keys for Anthropic, OpenAI, Google Gemini and OpenRouter,
-showing balance, spend and usage trends where each provider's API exposes them.
+to decide which directory that is. One folder therefore equals one fully isolated
+account. AI Account Manager turns that mechanism into a dashboard: each account
+lives in its own folder, stays signed in independently, and launches into a
+terminal or VS Code with the right environment already injected. Alongside it
+sits a **GPT / Codex** panel that reads your ChatGPT plan usage from the locally
+installed Codex CLI, a daily token history comparing the two, configurable
+Windows quota alerts, and an API-key dashboard for Anthropic, OpenAI, Google
+Gemini and OpenRouter.
 
-> **Not affiliated with Anthropic.** This is an independent, in-house tool that
-> drives the publicly documented `CLAUDE_CONFIG_DIR` mechanism and each
-> provider's own public API. It is not a Claude product and is not endorsed by
-> Anthropic or any other provider named here.
+> **Not affiliated with Anthropic or OpenAI.** This is an independent, in-house
+> tool that drives the publicly documented `CLAUDE_CONFIG_DIR` mechanism, the
+> local Codex CLI, and each provider's own public API. It is not a Claude or
+> ChatGPT product and is not endorsed by any provider named here.
 
-![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-blue) ![Electron](https://img.shields.io/badge/Electron-42-9feaf9) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-blue) ![Electron](https://img.shields.io/badge/Electron-37-9feaf9) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+
+---
+
+## ⚠️ Read this before you change anything
+
+> ### This repository's source of record is *formatted runtime JavaScript*, not TypeScript.
+
+Versions 1.3.0 through 1.4.1 were produced by editing the app's built output
+directly and repacking it — the original TypeScript/React project for those
+releases no longer exists. What you see in `app/` is that runtime, recovered and
+formatted: readable, tested and reproducible, but not the original sources.
+
+Two consequences that will bite you if you miss them:
+
+1. **Edit `app/dist-electron/main.cjs` and `app/dist/assets/*.js` directly.**
+   There is no build step that regenerates them. Nothing compiles into `app/`.
+2. **`npm test` is your safety net, and it is stricter than it looks.**
+   `scripts/verify-runtime.cjs` asserts that specific IPC channels, Codex
+   discovery paths, preload bridges and UI strings are still present. It also
+   asserts the renderer bundle is at its exact filename
+   (`index-CfQCNBzk.js`) — **do not rename the asset files.**
+
+A future refactor can progressively move named runtime sections back into
+standalone TypeScript modules without changing packaged behaviour. Until then,
+treat `app/` as source.
 
 ---
 
@@ -27,28 +53,39 @@ showing balance, spend and usage trends where each provider's API exposes them.
 You need Windows 10 or 11. No GitHub account is required — the Releases page is
 public.
 
-1. **Download.** Go to the [Releases](../../releases) page, open the latest
-   release, and download `AIAccountManager-Setup-<version>.exe` from **Assets**.
-2. **Install.** Run it. Per-user install, no admin rights needed. Windows may
-   warn that the publisher is unrecognised — the app is not code-signed; click
-   **More info** → **Run anyway**.
-3. **Prerequisite.** [Claude Code](https://claude.com/claude-code) must be
-   installed and on your PATH. Check with `claude --version` in PowerShell.
-4. **First run — import the account you already have.**
-   *Add account → Import existing* → point it at `C:\Users\<you>\.claude`. Your
-   current session appears immediately, with live usage.
-5. **Add a second account.** *Add account → Create new* → give it a name → a
-   terminal opens running `claude auth login` → sign in in the browser. The card
-   turns green by itself when the login lands.
-6. **Work.** Click **Open Claude** on whichever account you want to be, and
-   repeat for as many accounts as you like — they run side by side.
-7. **Optional — track API spend.** **API Keys** in the sidebar → *Add key* →
-   pick a provider, paste the key, set a monthly budget. Keys are encrypted with
-   Windows DPAPI before they touch disk.
+1. **Download** `AI-Account-Manager-Setup-<version>.exe` from the
+   [Releases](../../releases) page.
+2. **Install.** Per-user, no admin rights. Windows will warn that the publisher
+   is unrecognised because the build is unsigned — **More info** → **Run anyway**.
+3. **Prerequisite:** [Claude Code](https://claude.com/claude-code) on your PATH
+   (`claude --version`). The Codex CLI is optional — without it the GPT/Codex
+   panel simply reports it cannot find Codex.
+4. **Import the account you already have:** *Add account → Import existing* →
+   point it at `C:\Users\<you>\.claude`.
+5. **Add another:** *Add account → Create new* → a terminal opens running
+   `claude auth login` → sign in in the browser. The card turns green by itself.
+6. **Work:** click **Open Claude** on whichever account you want to be. They run
+   side by side.
 
-Full detail: [docs/INSTALL.md](docs/INSTALL.md) for a zero-assumptions install
-walkthrough, [docs/USAGE.md](docs/USAGE.md) for the account guide, and the
-in-app **📖 Usage guide** button on any provider page.
+Full walkthrough: [docs/INSTALL.md](docs/INSTALL.md).
+
+---
+
+## What's in 1.4.1
+
+- **GPT/Codex vs Claude daily token history**, with 7, 30 and 90-day views.
+- **Reliable Windows Codex discovery** across Codex Desktop, npm, VS Code and
+  WindowsApps installations.
+- **Configurable Windows alerts** for quota thresholds, reset reminders and
+  expiring Claude sign-ins.
+- **Permission-aware API-key setup** that detects the key type and verifies
+  provider analytics access *before* saving — so a key that cannot report spend
+  tells you at the point of entry rather than showing an empty dashboard later.
+- **Full-width Claude and GPT dashboard cards**; the redundant "View all other
+  accounts" button was removed.
+- **HTTPS update-channel checks** with SHA-256 manifest validation.
+- **Automated runtime checks, unit tests, Windows packaging**, release-manifest
+  generation, and an optional signed GitHub Actions build.
 
 ---
 
@@ -60,117 +97,122 @@ cd ai-account-manager
 .\setup.ps1
 ```
 
-`setup.ps1` checks your Node version, installs the exact dependency tree from
-`package-lock.json` (`npm ci`), and type-checks the project so you know the
-checkout is sound before you run anything.
+`setup.ps1` checks your Node version, installs dependencies, and runs the test
+suite so you know the checkout is sound before you touch anything.
 
 Run from source:
 
 ```powershell
-npm start            # build main + renderer, then launch Electron
+npm run build:dir     # package to release\win-unpacked, then launch it
 ```
 
-Rebuild the installer:
+Build the installer:
 
 ```powershell
-.\build\build.ps1    # typecheck -> build -> electron-builder --win
-                     # output: release\AIAccountManager-Setup-<version>.exe
+.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.4.1.exe
 ```
-
-Other scripts:
 
 | Command | What it does |
 |---|---|
-| `npm run typecheck` | Strict TypeScript across main, preload and renderer |
-| `npm test` | Analytics + launcher unit tests, no Electron needed |
-| `npm run verify` | End-to-end account dashboard test (Playwright) |
-| `npm run verify:api` | End-to-end API analytics test, with `CAM_FAKE_PROVIDERS=1` mock data — **never uses a real key or network call** |
-| `node scripts/verify-skills.mjs` | Skills Sync test; needs the AI Environment Manager engine installed (no npm alias for this one) |
-| `npm run smoke:packaged` | Launches the packaged build from `release\win-unpacked` |
+| `npm test` | Unit tests **and** runtime verification — run this before every commit |
+| `npm run verify` | Runtime verification only |
+| `npm run build:dir` | Unpacked build into `release\win-unpacked` |
+| `npm run build:win` | NSIS installer |
+| `npm run release:manifest` | Generate `release/latest.json` for the update channel |
+| `npm run format` | Prettier across `app`, `scripts`, `tests`, `.github` |
 
-### Project layout
+Node 22 is what the CI workflow uses. The workflow uses pnpm; the npm scripts
+work equally well locally.
 
-This is an Electron + React + Vite project, so it uses that ecosystem's standard
-layout rather than a single `src/` drop:
+### Layout
 
 | Path | What lives there |
 |---|---|
-| `electron/` | Main process — `main.ts`, `preload.ts`, and `lib/` (accounts, launcher, usage, token refresh, API key store and provider adapters) |
-| `src/` | React renderer — views, components, styles |
-| `shared/` | TypeScript types shared across the process boundary |
-| `scripts/` | Build helpers and the test/verify harnesses |
-| `build/` | `icon.ico` for electron-builder, plus `build.ps1` |
-| `docs/` | Architecture, usage, design and research documents |
-| `electron-builder.yml` | Packaging configuration (NSIS installer) |
-
-Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — it explains how
-profiles, launching and usage reporting actually work.
+| `app/dist-electron/main.cjs` | Electron main process — accounts, launcher, usage, Codex discovery, alerts, updates |
+| `app/dist-electron/preload.cjs` | The context-bridge surface exposed to the renderer |
+| `app/dist/assets/` | React renderer runtime and styles |
+| `assets/USAGE_TRACKING_GUIDE.pdf` | The in-app 📖 guide, shipped as an unpacked extra resource |
+| `scripts/` | Runtime verification and release-manifest tooling |
+| `tests/` | Regression tests for alerts, update manifests and required runtime surfaces |
+| `build/icon.ico` | Application icon |
+| `.github/workflows/release.yml` | Windows build / sign / release workflow |
 
 ---
 
 ## Security notes
 
-**No secrets live in this repository.** Everything sensitive is created locally,
-on the machine that runs the app, and stays there.
+**No secrets live in this repository.** Everything sensitive is created locally
+and stays on the machine that runs the app.
 
-- **No passwords, ever.** Sign-in is Claude Code's own browser OAuth flow. The
-  app never sees, prompts for, or stores a password.
+- **No passwords, ever.** Sign-in is Claude Code's own browser OAuth flow.
 - **OAuth tokens stay where Claude Code put them** — inside each profile folder.
   The app's own store holds account names and folder paths only.
 - **API keys are encrypted at rest** with Windows DPAPI via Electron
-  `safeStorage`; the OS holds the master key, scoped to your Windows user.
-  Secrets live in a separate vault file from their metadata, and if OS
-  encryption is unavailable the app **refuses to store the key** rather than
-  writing it in plaintext.
-- **Keys and tokens never cross into the UI.** The renderer runs under
-  `connect-src 'none'`; secrets are only ever sent from the main process to that
-  provider's own API, never to any third party. They are masked on screen and
-  never logged. Exports contain metadata only.
-- **All local state lives outside this repo**, in
-  `%APPDATA%\AIAccountManager\`. Nothing there is ever committed, and
-  `.gitignore` blocks those filenames anyway in case one is copied in.
-- **Network access is narrow**: each provider's own API, plus Anthropic's
-  `api/oauth/usage` and `platform.claude.com/v1/oauth/token` endpoints — the same
-  two the Claude Code CLI itself uses.
+  `safeStorage`. If OS encryption is unavailable the app **refuses to store the
+  key** rather than writing plaintext.
+- **Keys and tokens never reach the UI.** Secrets go from the main process to
+  that provider's own API and nowhere else. They are masked on screen and never
+  logged; exports contain metadata only.
+- **Update manifests must be HTTPS and carry a published SHA-256** before the app
+  will offer an update.
+- **Code-signing certificates are never committed.** `electron-builder` reads
+  `CSC_LINK` / `CSC_KEY_PASSWORD` from the environment; the CI workflow reads
+  them from encrypted repository secrets.
+- **All local state lives outside this repo**, in `%APPDATA%\ClaudeAccountManager`
+  (see the note below).
 
-If you are adding a feature that touches a credential, the rule is simple: it
-goes through `electron/lib/api/keyStore.ts`, it never crosses IPC, and it never
-gets logged.
+### Why the data folder is still named `ClaudeAccountManager`
+
+The app is called AI Account Manager, but `app/dist-electron/main.cjs` keeps its
+data directory at `%APPDATA%\ClaudeAccountManager` **deliberately**. Renaming it
+would orphan every existing install's accounts, settings and encrypted API keys.
+
+If you ever do rename it, note that Electron's `safeStorage` master key lives in
+a **separate** `Local State` file inside Electron's own userData folder
+(`%APPDATA%\<productName>`), and must be carried across too — otherwise every
+API key reports *"Stored key could not be decrypted"* even though the vault
+copied perfectly. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ---
 
 ## Making changes
 
-1. **Branch.** `git checkout -b add-provider-x` — never commit straight to
-   `main`.
-2. **Read the relevant doc.** Account handling →
-   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). API analytics →
-   [docs/API_ANALYTICS_DESIGN.md](docs/API_ANALYTICS_DESIGN.md) and the
-   [research report](docs/API_ANALYTICS_RESEARCH.md), which records what each
-   provider's API can and cannot actually report. Skills Sync →
-   [docs/SKILLS_SYNC.md](docs/SKILLS_SYNC.md).
-3. **Edit, then type-check.** `npm run typecheck` catches most mistakes across
-   the process boundary before the app ever launches.
-4. **Test.** `npm test` for the pure logic. `npm run verify` / `verify:api` for
-   the end-to-end paths — the API one runs against mock provider data, so
-   **never point a test at a real key or a real account**.
-5. **Rebuild the installer** with `.\build\build.ps1` and install it once. A
-   packaged build can fail on things a dev run never shows, particularly around
-   `extraResources` and the guide viewer.
-6. **Open a pull request** saying what changed and what you tested.
+1. **Branch.** `git checkout -b fix-codex-discovery`.
+2. **Edit the runtime directly** — `app/dist-electron/main.cjs` for main-process
+   behaviour, `app/dist/assets/index-*.js` for UI. Remember nothing compiles into
+   `app/`.
+3. **`npm test`.** Both the unit tests and the runtime verification must pass.
+   If verification fails it is usually telling you that you removed a string or
+   channel something else depends on.
+4. **`npm run format`** to keep the runtime consistently formatted — this is what
+   makes hand-editing bundles tolerable.
+5. **Build and install once** with `.\build\build.ps1`. A packaged build can fail
+   on things a dev run never exercises, particularly the bundled PDF guide.
+6. **Open a pull request** describing what changed and what you tested.
 
 ### Two things that will catch you out
 
-- **Kill any running copy before `npm run dist` or a Playwright launch.** The app
-  takes a single-instance lock, so a second instance quits immediately and the
-  test harness just sees "browser closed".
+- **Kill any running copy before building.** The app takes a single-instance
+  lock; a second instance quits immediately.
 - **Never point `CLAUDE_CONFIG_DIR` at the default `~\.claude` folder.** With the
-  variable unset, Claude Code reads `.claude.json` from the home directory; set
-  it explicitly to that same folder and Claude Code looks *inside* the folder
-  instead and forks fresh state. The app already handles this — launches of the
-  default profile deliberately leave the variable unset.
+  variable unset Claude Code reads `.claude.json` from the home directory; set it
+  explicitly to that folder and Claude Code looks *inside* it instead and forks
+  fresh state. The app already handles this.
 
 ---
+
+## Update channel
+
+Host the installer over HTTPS, then generate the manifest:
+
+```powershell
+$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.4.1.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.4.1.exe'
+```
+
+Host `release/latest.json` over HTTPS and paste that URL into
+**Dashboard → Updates**. The app validates the manifest shape and requires both
+an HTTPS download and a published SHA-256 checksum before offering an update.
 
 ## Documentation
 
@@ -178,78 +220,7 @@ gets logged.
 |---|---|
 | [docs/INSTALL.md](docs/INSTALL.md) | Installing from scratch, assuming no technical background |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | When something fails: what it means and how to fix it |
-| [docs/USAGE.md](docs/USAGE.md) | Day-to-day account management guide |
-| [docs/USAGE_TRACKING_GUIDE.pdf](docs/USAGE_TRACKING_GUIDE.pdf) | Why API usage pages can look empty and how to fix it — also the in-app 📖 guide |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How profiles, launching and usage reporting work |
-| [docs/API_ANALYTICS_DESIGN.md](docs/API_ANALYTICS_DESIGN.md) | Design of the API key analytics feature |
-| [docs/API_ANALYTICS_RESEARCH.md](docs/API_ANALYTICS_RESEARCH.md) | What each provider's API genuinely exposes |
-| [docs/SKILLS_SYNC.md](docs/SKILLS_SYNC.md) | Keeping a skill set identical across profiles |
-| [BUILDING.md](BUILDING.md) | Packaging detail beyond `build.ps1` |
-
----
-
-## Features
-
-### Account management
-
-- **Unlimited accounts** — Anthropic-login and Google-login alike; sign-in
-  happens in your browser via `claude auth login` and both produce the same
-  local session.
-- **One-click launch** per account into Claude Code, PowerShell or VS Code, each
-  with the correct `CLAUDE_CONFIG_DIR` injected. Run as many at once as you like.
-- **Exact usage dashboard** — session (5h), weekly (all models) and model-scoped
-  limits with percentages, severity and reset countdowns, read from Anthropic's
-  own usage API using each profile's token. Extra-usage credit spend too.
-- **Automatic token refresh** so idle accounts keep reporting without re-login.
-- **Local fallback estimates** from transcripts when offline.
-- **Set Default** — point every *new* terminal at a chosen account via the
-  user-level `CLAUDE_CONFIG_DIR` variable, and clear it just as easily.
-- **Import / export**, search, rename, remove, dark and light themes.
-
-### API key analytics
-
-A second dashboard tracks API keys across four providers, with an adapter
-architecture built to add more.
-
-- **Per-key card** — provider, nickname, masked key, balance, spend today / this
-  week / this month, lifetime usage, rate limits where exposed, and a status
-  light derived from runway and budget thresholds.
-- **Charts** — cost, tokens and requests over 1 / 7 / 30 days and lifetime.
-- **Analytics** — top spending provider, average daily spend, projected monthly
-  spend, and credit runway.
-
-Because the app is **not a proxy**, it can only show what each provider's own API
-reports; windows and trends are derived by snapshotting cumulative counters over
-time and diffing them.
-
-| Provider | Balance | Usage / cost | Notes |
-|---|---|---|---|
-| **OpenRouter** | ✅ exact | ✅ exact (live daily/weekly/monthly) | Best supported — one key does it all |
-| **Anthropic** | ❌ none | 🔑 needs an **Admin key** | Standard keys validate only; no balance API exists |
-| **OpenAI** | ❌ none | 🔑 needs an **Admin key** | Project keys validate only; no balance API exists |
-| **Gemini** | ❌ none | ❌ estimate only | AI Studio keys are inference-only |
-
-Every metric is labelled in the UI with how it was obtained — **Live / Admin key
-/ Estimated / Unavailable** — so nothing implies precision the provider does not
-offer.
-
-### Skills Sync
-
-Keeps a curated set of Claude skills identical across every profile on the
-machine. It is a thin front end over the AI Environment Manager engine, which
-this app shells out to — AI Account Manager never touches skill files itself.
-Every change is backed up first, checksum-verified, and never overwrites a newer
-or locally modified copy. See [docs/SKILLS_SYNC.md](docs/SKILLS_SYNC.md).
-
----
-
-## Caveats worth knowing
-
-- **VS Code single instance:** if VS Code is already running, a newly launched
-  window is created by the *existing* process and inherits its environment.
-  Close VS Code first, or use a terminal launch, which is always reliable.
-- **Removing an account** only unregisters it, unless you explicitly tick *also
-  delete the folder*.
+| [assets/USAGE_TRACKING_GUIDE.pdf](assets/USAGE_TRACKING_GUIDE.pdf) | Why API usage pages can look empty — also the in-app 📖 guide |
 
 ## License
 

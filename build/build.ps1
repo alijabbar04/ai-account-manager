@@ -1,29 +1,29 @@
 # ============================================================================
 #  AI Account Manager : one-command installer build
 #  Run from anywhere:   .\build\build.ps1
-#  Output:              <repo>\release\AIAccountManager-Setup-<version>.exe
+#  Output:              <repo>\release\AI-Account-Manager-Setup-<version>.exe
 #
 #  Prerequisite: .\setup.ps1 has been run once.
 #
-#  This runs the same pipeline as 'npm run dist' (typecheck -> build main +
-#  renderer -> electron-builder --win) but first kills any running copy of the
-#  app, which is the single most common reason a build fails or a Playwright
-#  run reports "browser closed": the app takes a single-instance lock.
+#  This wraps 'npm run build:win' (tests -> electron-builder --win nsis) and
+#  first closes any running copy of the app, which is the most common reason a
+#  build fails: electron-builder cannot overwrite locked files, and the app's
+#  single-instance lock makes a freshly built copy quit on launch.
+#
+#  Code signing is automatic when CSC_LINK and CSC_KEY_PASSWORD are set in the
+#  environment. Certificates are never stored in this repository.
 # ============================================================================
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 
 Write-Host "=== Building AI Account Manager ===" -ForegroundColor Cyan
 
-# --- 0. Sanity: dependencies installed? -----------------------------------
 if (-not (Test-Path (Join-Path $repo "node_modules"))) {
     Write-Host "node_modules is missing - run .\setup.ps1 first." -ForegroundColor Red
     exit 1
 }
 
-# --- 1. Close any running instance ----------------------------------------
-# electron-builder cannot overwrite files that are locked by a running app,
-# and the single-instance lock makes a freshly built copy quit on launch.
+# --- Close any running instance -------------------------------------------
 $running = Get-Process -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessName -in @("AI Account Manager", "Claude Account Manager", "electron") }
 if ($running) {
@@ -32,36 +32,45 @@ if ($running) {
     Start-Sleep -Seconds 2
 }
 
-# --- 2. Read the version so we can report the artifact name ---------------
+# --- Version --------------------------------------------------------------
 $pkg = Get-Content (Join-Path $repo "package.json") -Raw | ConvertFrom-Json
 $version = $pkg.version
 Write-Host "Version: $version"
 
-# --- 3. Build -------------------------------------------------------------
-# 'npm run dist' = typecheck && build:main && build:renderer && electron-builder
+if ($env:CSC_LINK) {
+    Write-Host "Code signing: ENABLED (CSC_LINK is set)" -ForegroundColor Green
+} else {
+    Write-Host "Code signing: disabled (CSC_LINK not set) - the installer will be unsigned." -ForegroundColor Yellow
+}
+
+# --- Build ----------------------------------------------------------------
 Push-Location $repo
 try {
-    Write-Host "`nRunning typecheck, build and electron-builder..." -ForegroundColor Cyan
+    Write-Host "`nRunning tests, then electron-builder..." -ForegroundColor Cyan
     Write-Host "(first run downloads electron-builder's NSIS tooling - be patient)`n"
-    npm run dist
+    npm run build:win
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nBuild failed - see the output above." -ForegroundColor Red
+        Write-Host "If it was the runtime verification that failed, an edit to app\ removed" -ForegroundColor Red
+        Write-Host "something scripts\verify-runtime.cjs requires." -ForegroundColor Red
         exit $LASTEXITCODE
     }
 } finally {
     Pop-Location
 }
 
-# --- 4. Report ------------------------------------------------------------
-$exe = Join-Path $repo "release\AIAccountManager-Setup-$version.exe"
+# --- Report ---------------------------------------------------------------
+$exe = Join-Path $repo "release\AI-Account-Manager-Setup-$version.exe"
 if (Test-Path $exe) {
     $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
     Write-Host "`nDONE: $exe ($mb MB)" -ForegroundColor Green
     Write-Host ""
     Write-Host "Before shipping it:" -ForegroundColor Yellow
-    Write-Host "  1. Install it and launch once - a packaged build can fail on"
-    Write-Host "     things a dev run never shows (extraResources, guide viewer)."
-    Write-Host "  2. Attach it to a GitHub Release; never commit it to the repo."
+    Write-Host "  1. Install and launch it once - a packaged build can fail on things"
+    Write-Host "     a dev run never exercises (extraResources, the PDF guide viewer)."
+    Write-Host "  2. Attach it to a GitHub Release; never commit it."
+    Write-Host "  3. For the update channel, generate the manifest:"
+    Write-Host "     npm run release:manifest -- 'release\AI-Account-Manager-Setup-$version.exe'"
 } else {
     Write-Host "`nBuild finished but the installer was not found at:" -ForegroundColor Red
     Write-Host "  $exe" -ForegroundColor Red

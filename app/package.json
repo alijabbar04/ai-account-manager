@@ -1,0 +1,14 @@
+{
+  "name": "ai-account-manager",
+  "productName": "AI Account Manager",
+  "version": "1.4.1",
+  "description": "Manage Claude Code accounts, GPT/Codex usage history, provider permissions, alerts, and API analytics from one Windows dashboard.",
+  "author": "AI Account Manager contributors",
+  "license": "MIT",
+  "private": true,
+  "main": "dist-electron/main.cjs",
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  }
+}

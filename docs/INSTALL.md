@@ -2,7 +2,7 @@
 
 This guide assumes no technical background. Follow it in order.
 
-There are two routes. **Almost everyone wants Option A.**
+Two routes. **Almost everyone wants Option A.**
 
 - **Option A — just use the app.** Download an installer and run it. About five
   minutes, no admin rights.
@@ -15,116 +15,125 @@ There are two routes. **Almost everyone wants Option A.**
 ### What you need
 
 - A Windows 10 or Windows 11 PC (64-bit).
-- **Claude Code installed**, because this app manages Claude Code accounts — it
-  cannot do anything useful without it. Check by pressing the Windows key,
-  typing `powershell`, pressing Enter, and running:
+- **Claude Code installed.** This app manages Claude Code accounts, so it cannot
+  do much without it. Press the Windows key, type `powershell`, press Enter, and
+  run:
 
   ```powershell
   claude --version
   ```
 
-  If that prints a version number you are ready. If it says the command is not
-  recognised, install Claude Code first from
+  If that prints a version you are ready. If not, install it from
   <https://claude.com/claude-code>, then close and reopen PowerShell.
-- **No GitHub account needed.** This repository is public, so the Releases page
-  and the installer download are open to anyone.
+- **The Codex CLI is optional.** Install it if you want the GPT/Codex usage
+  panel. Without it, that panel simply says it cannot find Codex; everything
+  else works normally.
+- **No GitHub account needed** — this repository is public.
 
 ### Step 1 — Download
 
-1. Go to the **Releases** page of this repository (add `/releases` to its web
-   address, or use the link on the right of the repository front page).
-2. Open the newest release at the top.
-3. Under **Assets**, click `AIAccountManager-Setup-<version>.exe`. It is about
-   90 MB.
+Go to the **Releases** page (add `/releases` to the repository address), open the
+newest release, and download `AI-Account-Manager-Setup-<version>.exe` from
+**Assets**.
 
 ### Step 2 — Install
 
 Run the downloaded file.
 
-Windows may show a blue **"Windows protected your PC"** box. This is expected —
-the app is not code-signed, which only means no certificate was purchased for it.
-Click **More info**, then **Run anyway**. Your browser may show a similar warning
-on download; choose **Keep**.
+Windows may show **"Windows protected your PC"**. Expected — the build is not
+code-signed, which only means no certificate was purchased. Click **More info**,
+then **Run anyway**. Your browser may warn on download too; choose **Keep**.
 
-The installer is **per-user**, so it does not ask for admin rights. It creates a
-Desktop shortcut and a Start Menu entry.
+The installer is **per-user**, so no admin rights. It creates a Desktop shortcut
+and a Start Menu entry.
 
 ### Step 3 — First run: bring in the account you already have
 
-Open **AI Account Manager** from the Desktop or Start Menu.
+Open **AI Account Manager**.
 
 Claude Code stores your current session in a folder called `.claude` in your user
-folder. Import it so the app can see it:
+folder. Register it:
 
-1. Click **Add account**.
-2. Choose **Import existing**.
-3. Point it at `C:\Users\<your-name>\.claude`.
+1. **Add account** → **Import existing**
+2. Point it at `C:\Users\<your-name>\.claude`
 
-Your existing account appears as a card, with live usage figures — session,
-weekly and model-scoped limits, each with a percentage and a reset countdown.
+Your account appears with live usage — session, weekly and model-scoped limits,
+each with a percentage and reset countdown.
 
-**Nothing was moved or copied.** Importing just registers the folder's location;
-your session stays exactly where Claude Code put it.
+**Nothing is moved or copied.** Importing just records the folder's location.
 
 ### Step 4 — Add a second account
 
-1. Click **Add account** → **Create new**.
-2. Give it a name you will recognise, such as `work` or `personal`. The app
-   creates a folder like `C:\Users\<you>\.claude-work` for it.
-3. A terminal window opens automatically running `claude auth login`.
-4. Sign in in the browser that opens — an Anthropic login or a Google login both
-   work. **The app never sees your password**; the whole sign-in happens in your
-   browser, exactly as it would if you ran Claude Code yourself.
-5. When the login completes, the card turns green on its own.
+1. **Add account** → **Create new**
+2. Name it something you will recognise, e.g. `work`. The app creates
+   `C:\Users\<you>\.claude-work`.
+3. A terminal opens running `claude auth login`.
+4. Sign in in the browser — Anthropic or Google login both work. **The app never
+   sees your password.**
+5. The card turns green on its own when the login lands.
 
-Repeat for as many accounts as you want.
+Repeat as many times as you like.
 
 ### Step 5 — Use an account
 
-Click **Open Claude** on whichever account you want to work as. A terminal opens
-with that account's environment already set.
+Click **Open Claude** on a card. A terminal opens with that account's environment
+already set. Several accounts can be open at once — each terminal keeps its own
+account for as long as it lives. There is no "switching".
 
-You can open several accounts at the same time — each terminal keeps its own
-account for as long as it is open. There is no "switching"; they simply coexist.
-
-The other launch buttons do the same thing for **PowerShell** and **VS Code**.
+**VS Code** and **PowerShell** buttons do the same for those.
 
 > **VS Code catch:** if VS Code is already running, Windows hands the new window
-> to the process that is already open, and it inherits *that* environment rather
-> than the one the app set. Close VS Code completely first, or use a terminal
-> launch, which always works.
+> to the existing process, which keeps *its* environment rather than the one the
+> app set. Close VS Code fully first, or use a terminal launch.
 
 ### Step 6 — Optional: set a default account
 
-**Set Default** on a card points every *new* terminal you open at that account,
-even outside this app. Clear it just as easily from the same menu. Terminals that
-are already open are unaffected.
+**Set Default** points every *new* terminal at that account, even outside this
+app, by setting the user-level `CLAUDE_CONFIG_DIR` variable. Clear it just as
+easily. Terminals already open are unaffected.
 
-### Step 7 — Optional: track API key spending
+### Step 7 — Optional: GPT / Codex usage
 
-This part is independent of the account features — skip it if you do not use API
-keys directly.
+If the Codex CLI is installed and signed in, the **GPT / Codex** panel reads your
+ChatGPT plan usage from it, and the token-history view compares Claude and GPT
+daily usage over 7, 30 or 90 days.
 
-1. Click **API Keys** in the left sidebar.
-2. Click **Add key**, choose the provider, paste the key, and optionally set a
-   monthly budget.
-3. Click **Validate** to confirm the key works.
+The app looks for Codex in the usual Windows locations — Codex Desktop, an npm
+global install, the VS Code extension, and WindowsApps. If it reports it cannot
+find Codex, check `codex --version` works in a terminal.
 
-What you see depends entirely on what each provider's API is willing to report:
+### Step 8 — Optional: usage alerts
+
+**Alerts** lets you configure Windows notifications for quota thresholds, reset
+reminders, and Claude sign-ins that are about to expire. Off until you set them
+up.
+
+### Step 9 — Optional: track API key spending
+
+Independent of the account features — skip if you do not use API keys directly.
+
+1. **API Keys** in the sidebar → **Add key**
+2. Choose the provider, paste the key, optionally set a monthly budget.
+
+The app **detects the key type and verifies analytics access before saving**, so
+if a key cannot report spend you find out immediately rather than staring at an
+empty dashboard later.
+
+What each provider actually exposes:
 
 | Provider | What you get |
 |---|---|
-| **OpenRouter** | Everything — balance and live daily / weekly / monthly spend, from one ordinary key |
-| **Anthropic** | A standard key validates but reports nothing. Spend needs an organisation **Admin key** |
+| **OpenRouter** | Everything — balance plus live daily / weekly / monthly spend from one ordinary key |
+| **Anthropic** | A standard key validates only. Spend needs an organisation **Admin key** |
 | **OpenAI** | Same — a project key validates only; spend needs an **Admin key** |
-| **Gemini** | Validation only; usage can be estimated but not measured |
+| **Gemini** | Validation only; usage can be estimated, not measured |
 
-If your Anthropic pages look empty, that is expected rather than broken — click
-the **📖 Usage guide** button on the provider page for the full explanation and
-the workarounds.
+If your Anthropic pages look empty that is expected, not broken. Click
+**📖 Usage guide** on the provider page, or read
+[USAGE_TRACKING_GUIDE.pdf](../assets/USAGE_TRACKING_GUIDE.pdf).
 
-**Your keys are encrypted** with Windows DPAPI before they touch the disk, and
-are only ever sent to that provider's own API.
+**Your keys are encrypted** with Windows DPAPI before touching disk, and are only
+ever sent to that provider's own API.
 
 ---
 
@@ -132,21 +141,15 @@ are only ever sent to that provider's own API.
 
 ### Step 1 — Install Node.js
 
-1. Go to <https://nodejs.org> and download the **LTS** version for Windows
-   (24.x is what this project is tested on; 20 or newer is required).
-2. Run the installer and accept the defaults. It adds itself to your PATH.
-
-Check it worked — open a **new** PowerShell window and run:
+Download the **LTS** build from <https://nodejs.org> (22.x is what CI uses; 20 or
+newer required) and accept the defaults. Then, in a **new** PowerShell window:
 
 ```powershell
 node --version
 npm --version
 ```
 
-You want `v20` or higher, and npm `10` or higher.
-
-No Visual Studio, Python or C++ toolchain is needed — this project has no native
-modules.
+No Visual Studio, Python or C++ toolchain is needed — no native modules.
 
 ### Step 2 — Install Git and the GitHub CLI
 
@@ -155,16 +158,11 @@ winget install --id Git.Git -e
 winget install --id GitHub.cli -e
 ```
 
-**Close PowerShell and open a new window** so the new commands are found.
+**Close PowerShell and open a new window** afterwards. The repository is public,
+so cloning needs no sign-in — run `gh auth login --web` only if you intend to
+push.
 
-The repository is public, so cloning needs no sign-in. Sign in only if you intend
-to push changes or open a pull request — a browser window opens:
-
-```powershell
-gh auth login --web
-```
-
-### Step 3 — Clone the repository
+### Step 3 — Clone
 
 ```powershell
 cd $env:USERPROFILE
@@ -174,109 +172,83 @@ gh repo clone alijabbar04/ai-account-manager
 cd ai-account-manager
 ```
 
-### Step 4 — Run the setup script
+### Step 4 — Run setup
 
 ```powershell
 .\setup.ps1
 ```
 
-This checks your Node version, installs the exact dependency tree pinned in
-`package-lock.json`, repairs the Electron binary if its download was skipped, and
-type-checks the project. It takes a couple of minutes on a first run.
+Checks your Node version, installs dependencies, repairs the Electron binary if
+its download was skipped, and runs the tests.
 
-If PowerShell refuses to run the script with a message about execution policies,
-run this once in the same window and try again:
+If PowerShell refuses with a message about execution policies:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-### Step 5 — Run the app
+### Step 5 — Run it
 
 ```powershell
-npm start
+npm run build:dir
 ```
 
-This builds the main process and the renderer, then launches Electron. The whole
-build takes a second or two, so just re-run it after each change.
+That packages into `release\win-unpacked`; launch
+`release\win-unpacked\AI Account Manager.exe`.
 
-From here, first-run setup is the same as Option A — continue from **Step 3**
-above.
+> **Close any installed copy first.** The app takes a single-instance lock, so a
+> second copy exits immediately and looks like a crash.
 
-> **Close any installed copy of the app first.** It takes a single-instance lock,
-> so a second copy exits immediately and looks like a crash.
+### Step 6 — Understand what you are editing
 
-> If you script the launch yourself, make sure `ELECTRON_RUN_AS_NODE` is not set
-> in your environment — some tools set it, and with it set `electron .` starts as
-> plain Node and exits without a window. Clear it in the **same** command, and use
-> `Remove-Item Env:\ELECTRON_RUN_AS_NODE` rather than assigning `$null`, which
-> leaves the variable defined as an empty string and does not fix it.
+**This project has no TypeScript build step.** Versions 1.3.0–1.4.1 were made by
+editing the app's built output directly; the original TypeScript for those
+releases no longer exists. `app/` *is* the source:
 
-### Step 6 — Build the installer (only when you have changed the code)
+- `app/dist-electron/main.cjs` — main process
+- `app/dist-electron/preload.cjs` — the context-bridge surface
+- `app/dist/assets/index-*.js` — React renderer
+
+Edit those directly, then **always** run `npm test`. It runs unit tests *and*
+`scripts/verify-runtime.cjs`, which asserts required IPC channels, Codex
+discovery paths, preload bridges and UI strings are still present — including
+that the renderer bundle keeps its exact filename. **Do not rename the asset
+files.**
+
+`npm run format` keeps everything Prettier-formatted, which is what makes editing
+bundles by hand tolerable.
+
+### Step 7 — Build the installer
 
 ```powershell
 .\build\build.ps1
 ```
 
-Output: `release\AIAccountManager-Setup-<version>.exe`. The first build downloads
-electron-builder's NSIS tooling, so it is slower than later ones.
+Output: `release\AI-Account-Manager-Setup-<version>.exe`. Install and launch it
+once before giving it to anyone — packaged builds can fail on the bundled PDF
+guide, which ships as an unpacked extra resource.
 
-**Install and launch the result once before giving it to anyone.** A packaged
-build can fail on things a development run never exercises — particularly the
-bundled PDF guide, which ships as an unpacked extra resource.
+Signing happens automatically if `CSC_LINK` and `CSC_KEY_PASSWORD` are set.
+Certificates are never stored in the repository.
 
 ---
 
 ## Upgrading from "Claude Account Manager"
 
-If you previously ran the app under its old name, its data lives in a folder
-under the old name and the renamed app will not find it — it will look like a
-fresh install with no accounts and no API keys.
-
-Nothing is lost, but **there are two folders to copy, not one.** Copying only the
-first is the common mistake: everything appears to migrate, and then every API
-key reports *"Stored key could not be decrypted"*.
-
-Close the app first, then run both commands:
-
-```powershell
-# 1. the app's own data - accounts, settings, usage history, key metadata
-Copy-Item "$env:APPDATA\ClaudeAccountManager" "$env:APPDATA\AIAccountManager" -Recurse
-
-# 2. the safeStorage master key, WITHOUT which the API key vault cannot decrypt
-Copy-Item "$env:APPDATA\Claude Account Manager\Local State" `
-          "$env:APPDATA\AI Account Manager\Local State" -Force
-```
-
-Note the folder names differ only by spaces, and that is not a typo:
-
-| Folder | What it is |
-|---|---|
-| `%APPDATA%\ClaudeAccountManager` (no spaces) | the app's own JSON data — the path in `electron/lib/paths.ts` |
-| `%APPDATA%\Claude Account Manager` (with spaces) | Electron's own userData folder, named after `productName` |
-
-**Why the second copy is required.** Electron's `safeStorage` does not DPAPI-wrap
-each secret directly. It generates one random master key, DPAPI-wraps *that*, and
-stores it in `Local State` inside Electron's userData folder. Rename the app and
-Electron mints a brand-new master key, so the old ciphertext in
-`api-keys-vault.json` becomes undecryptable even though the file copied across
-perfectly. Carrying `Local State` over moves the master key with it.
-
-Run the second command **after** launching the new app at least once, so the
-target folder exists — or create it first.
-
-Two further notes:
-
-- **Copy, do not move**, until you have confirmed everything is present. The old
-  folders are then safe to delete.
-- **`Local State` is DPAPI-protected and scoped to your Windows user on this
-  machine.** Carrying it to the *same* machine and user works. Carrying it to a
-  different user or PC will not — those API keys must be re-entered by hand.
-  Never copy it to OneDrive, a network share, or any synced location.
+The app was renamed, but its **data directory deliberately was not** — it is
+still `%APPDATA%\ClaudeAccountManager`. So an upgrade Just Works: your accounts,
+settings, usage history and API keys all carry over with no action from you.
 
 The old and new builds install to separate folders, so both can sit on the
 machine at once. Uninstall the old one from **Settings → Apps** when you are
 happy.
+
+> **If you ever do rename the data directory**, be aware there are *two* folders,
+> not one. Electron's `safeStorage` master key lives in a `Local State` file
+> inside Electron's own userData folder (`%APPDATA%\<productName>`), separate
+> from the app data folder holding `api-keys-vault.json`. Copy only the first and
+> every API key reports *"Stored key could not be decrypted"* despite the vault
+> copying perfectly. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
