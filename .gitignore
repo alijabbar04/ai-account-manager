@@ -1,0 +1,89 @@
+# ---------------------------------------------------------------------------
+#  Dependencies and build output
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+dist-electron/
+release/
+scripts/shots/
+scripts/.test-launcher-bundle.cjs
+build/icon-256.png
+
+# Packaged binaries are distributed via GitHub Releases, never committed.
+*.exe
+*.msi
+*.blockmap
+*.nupkg
+*.asar
+
+# NOTE: build/ itself is a TRACKED folder here - it holds icon.ico
+# (electron-builder buildResources) and build.ps1. Do not blanket-ignore it.
+
+# ---------------------------------------------------------------------------
+#  SECRETS - never commit
+# ---------------------------------------------------------------------------
+# The app keeps its own state in %APPDATA%\AIAccountManager, outside this
+# repository, so these should never appear here. They are listed anyway so an
+# accidental copy into the working tree cannot be staged.
+api-keys.json            # API key metadata
+api-keys-vault.json      # DPAPI-encrypted API key secrets
+profiles.json            # account names + profile folder paths
+settings.json
+usage-snapshots.json
+api-usage-snapshots.json
+.credentials.json        # Claude Code OAuth tokens
+.claude.json
+*.jsonl                  # usage ledgers
+
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# ---------------------------------------------------------------------------
+#  Session / browser / credential stores
+# ---------------------------------------------------------------------------
+*profile*/
+User Data/
+Local Storage/
+Session Storage/
+IndexedDB/
+Cookies
+Cookies-journal
+*.sqlite
+*.sqlite3
+*.db
+
+# ---------------------------------------------------------------------------
+#  Logs and diagnostics
+# ---------------------------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-error.log*
+
+# Screenshots can capture real account names and usage figures.
+scripts/shots/*.png
+*.screenshot.png
+
+# ---------------------------------------------------------------------------
+#  Python (not used by this project, listed for safety)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+# ---------------------------------------------------------------------------
+#  Editor / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.bak
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

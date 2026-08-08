@@ -1,0 +1,41 @@
+{
+  "name": "ai-account-manager",
+  "productName": "AI Account Manager",
+  "version": "1.2.0",
+  "description": "Manage multiple Claude Code accounts on one Windows machine — isolated profiles, one-click launching, live usage dashboard.",
+  "author": "AI Account Manager contributors",
+  "license": "MIT",
+  "private": true,
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "build:main": "node scripts/build-main.mjs",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "dist": "npm run typecheck && npm run build && electron-builder --win",
+    "icon": "node scripts/make-icon.mjs",
+    "verify": "node scripts/verify.mjs",
+    "verify:api": "node scripts/verify-api.mjs",
+    "test:launcher": "node scripts/test-launcher.mjs",
+    "test:analytics": "node scripts/test-analytics.mjs",
+    "test": "node scripts/test-analytics.mjs && node scripts/test-launcher.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.61.1",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  }
+}
