@@ -80,18 +80,18 @@ Run once in the same window, then retry. It affects only that window.
 If you previously ran this app under its former name, its data is in a folder
 named after the old branding and the renamed build does not look there.
 
-Nothing is lost. Close the app and copy the folder:
+Nothing is lost, but **two folders need copying, not one** — see
+[INSTALL.md](INSTALL.md#upgrading-from-claude-account-manager) for the full
+explanation. Close the app, then:
 
 ```powershell
 Copy-Item "$env:APPDATA\ClaudeAccountManager" "$env:APPDATA\AIAccountManager" -Recurse
+Copy-Item "$env:APPDATA\Claude Account Manager\Local State" `
+          "$env:APPDATA\AI Account Manager\Local State" -Force
 ```
 
 Reopen the app and everything is back. Copy rather than move until you have
-confirmed it worked, then delete the old folder.
-
-**Caveat for API keys:** the vault is encrypted with Windows DPAPI, scoped to
-your Windows user on that machine. Copying it on the *same* machine and user
-works. Moving it to another user or PC will not — those keys must be re-entered.
+confirmed it worked.
 
 ### All state lives outside the app folder
 
@@ -223,11 +223,33 @@ around it by storing the key elsewhere in the repo.
 
 ### "Stored key could not be decrypted"
 
-The vault file was written by a **different Windows user or machine**. DPAPI keys
-are scoped to the user that encrypted them, so the ciphertext is unreadable here —
-by design.
+There are two causes, and the common one is fixable without re-entering anything.
 
-Remove the key in the app and add it again.
+**1. You copied the app data but not `Local State` (most likely).** If every key
+reports this at once, straight after moving data between installs or renaming the
+app, the vault is fine — the *master key* is missing.
+
+Electron's `safeStorage` generates one random master key, DPAPI-wraps it, and
+stores it in `Local State` inside Electron's own userData folder
+(`%APPDATA%\<productName>`) — **not** in the app-data folder holding
+`api-keys-vault.json`. A fresh install mints a new master key, so the copied
+ciphertext cannot be opened. Close the app and carry the master key across:
+
+```powershell
+Copy-Item "$env:APPDATA\<old productName>\Local State" `
+          "$env:APPDATA\<new productName>\Local State" -Force
+```
+
+Reopen the app; the keys decrypt immediately. Back up the destination file first
+if you want to be able to undo it.
+
+**2. The vault really was written by a different Windows user or machine.** DPAPI
+is scoped to the user that encrypted it, so the ciphertext is genuinely
+unreadable here — by design, and `Local State` will not help because it is
+DPAPI-protected the same way. Remove each key in the app and add it again.
+
+Telling them apart: cause 1 hits **every** key at once immediately after a move
+or rename; cause 2 follows carrying files to a different user account or PC.
 
 ### "That doesn't look like a valid key for this provider."
 

@@ -233,21 +233,46 @@ If you previously ran the app under its old name, its data lives in a folder
 under the old name and the renamed app will not find it — it will look like a
 fresh install with no accounts and no API keys.
 
-Nothing is lost. Close the app and copy the folder across in PowerShell:
+Nothing is lost, but **there are two folders to copy, not one.** Copying only the
+first is the common mistake: everything appears to migrate, and then every API
+key reports *"Stored key could not be decrypted"*.
+
+Close the app first, then run both commands:
 
 ```powershell
+# 1. the app's own data - accounts, settings, usage history, key metadata
 Copy-Item "$env:APPDATA\ClaudeAccountManager" "$env:APPDATA\AIAccountManager" -Recurse
+
+# 2. the safeStorage master key, WITHOUT which the API key vault cannot decrypt
+Copy-Item "$env:APPDATA\Claude Account Manager\Local State" `
+          "$env:APPDATA\AI Account Manager\Local State" -Force
 ```
 
-Then reopen the app: your accounts, default, theme and API keys are all back.
+Note the folder names differ only by spaces, and that is not a typo:
 
-Two notes:
+| Folder | What it is |
+|---|---|
+| `%APPDATA%\ClaudeAccountManager` (no spaces) | the app's own JSON data — the path in `electron/lib/paths.ts` |
+| `%APPDATA%\Claude Account Manager` (with spaces) | Electron's own userData folder, named after `productName` |
+
+**Why the second copy is required.** Electron's `safeStorage` does not DPAPI-wrap
+each secret directly. It generates one random master key, DPAPI-wraps *that*, and
+stores it in `Local State` inside Electron's userData folder. Rename the app and
+Electron mints a brand-new master key, so the old ciphertext in
+`api-keys-vault.json` becomes undecryptable even though the file copied across
+perfectly. Carrying `Local State` over moves the master key with it.
+
+Run the second command **after** launching the new app at least once, so the
+target folder exists — or create it first.
+
+Two further notes:
 
 - **Copy, do not move**, until you have confirmed everything is present. The old
-  folder is then safe to delete.
-- **The API key vault is encrypted with Windows DPAPI, scoped to your Windows
-  user account.** Copying it on the *same* machine and user works fine. Copying
-  it to a different user or PC will not — those keys must be re-entered.
+  folders are then safe to delete.
+- **`Local State` is DPAPI-protected and scoped to your Windows user on this
+  machine.** Carrying it to the *same* machine and user works. Carrying it to a
+  different user or PC will not — those API keys must be re-entered by hand.
+  Never copy it to OneDrive, a network share, or any synced location.
 
 The old and new builds install to separate folders, so both can sit on the
 machine at once. Uninstall the old one from **Settings → Apps** when you are
