@@ -207,7 +207,9 @@ above.
 
 > If you script the launch yourself, make sure `ELECTRON_RUN_AS_NODE` is not set
 > in your environment — some tools set it, and with it set `electron .` starts as
-> plain Node and exits without a window.
+> plain Node and exits without a window. Clear it in the **same** command, and use
+> `Remove-Item Env:\ELECTRON_RUN_AS_NODE` rather than assigning `$null`, which
+> leaves the variable defined as an empty string and does not fix it.
 
 ### Step 6 — Build the installer (only when you have changed the code)
 

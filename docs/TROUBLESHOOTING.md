@@ -31,11 +31,21 @@ If there is genuinely no instance running:
 `electron .` starts as plain Node, runs nothing, and exits silently. Some tools
 set it and it is inherited by every new shell.
 
-Clear it in the **same** command that launches the app:
+Clear it in the **same** command that launches the app, because every new shell
+inherits it again:
 
 ```powershell
-$env:ELECTRON_RUN_AS_NODE = $null; npm start
+Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; npm start
 ```
+
+**Use `Remove-Item`, not `$env:ELECTRON_RUN_AS_NODE = $null`.** Assigning `$null`
+leaves the variable defined as an empty string, which Electron still treats as
+set — so the app keeps failing in a way that looks like the fix did not work.
+
+The failure is not always silent. If the variable is set to an empty string you
+may instead get a native crash with `Assertion failed:
+(isolate_data->snapshot_data()) != nullptr` in `node::CreateEnvironment` and exit
+code 134. Same cause, same fix.
 
 ### `npm start` fails, or `node_modules\electron\dist\electron.exe` is missing
 
