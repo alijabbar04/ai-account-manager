@@ -58,6 +58,14 @@ function isHomeDefaultDir(dir) {
   );
 }
 function appDataDir() {
+  // DO NOT rename "ClaudeAccountManager" to match the current product name.
+  // The app was rebranded to AI Account Manager, but every existing install's
+  // accounts, settings, usage history and DPAPI-encrypted API key vault live
+  // in %APPDATA%\ClaudeAccountManager. Changing this string orphans all of it
+  // silently - the app would just look freshly installed. If a rename is ever
+  // truly needed, it requires an explicit, tested migration step (copy the
+  // folder AND the separate Electron "Local State" file that holds the
+  // safeStorage master key - see docs/TROUBLESHOOTING.md), not a one-line edit.
   const dir = path.join(
     import_electron.app.getPath("appData"),
     "ClaudeAccountManager",

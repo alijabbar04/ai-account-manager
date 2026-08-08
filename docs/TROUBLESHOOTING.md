@@ -58,11 +58,36 @@ node node_modules\electron\install.js
 
 ## The app opens but has no accounts or API keys
 
-### It looks like a completely fresh install
+### My accounts have disappeared / it looks like a completely fresh install
 
-The data directory is `%APPDATA%\ClaudeAccountManager` and was **deliberately
-not renamed** when the app was rebranded, precisely so upgrades keep working. If
-it looks empty, that folder is missing or was moved.
+**Nothing was deleted.** This almost always means the app is looking at the
+wrong data directory, not that your data is gone.
+
+All accounts, settings and API keys live in one folder, and it is **not** named
+after the current app name:
+
+```
+%APPDATA%\ClaudeAccountManager
+```
+
+That is deliberate — see
+[README.md § Why the data folder is still named ClaudeAccountManager](../README.md#why-the-data-folder-is-still-named-claudeaccountmanager-do-not-rename-it).
+It was **not renamed** when the app was rebranded from Claude Account Manager to
+AI Account Manager, precisely so upgrades keep working with zero user action.
+If accounts have vanished, check:
+
+1. **Does `%APPDATA%\ClaudeAccountManager` still exist?** Open a terminal:
+   `Test-Path "$env:APPDATA\ClaudeAccountManager"`. If `False`, the folder was
+   moved, renamed, or deleted outside the app — restore it from a backup.
+2. **Are you running a build that was hand-modified to use a different data
+   directory?** Only ever change `appDataDir()` in
+   `app/dist-electron/main.cjs` alongside a real migration (see the README
+   section linked above) — never as a casual rename.
+3. **Did an uninstaller remove it?** Standard NSIS uninstallers do not touch
+   `%APPDATA%` by default, but always decline any "remove user data" /
+   "remove all user data" option if one is offered.
+
+Everything the app persists lives in that one folder:
 
 Everything the app persists lives there:
 

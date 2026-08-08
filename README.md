@@ -161,17 +161,36 @@ and stays on the machine that runs the app.
 - **All local state lives outside this repo**, in `%APPDATA%\ClaudeAccountManager`
   (see the note below).
 
-### Why the data folder is still named `ClaudeAccountManager`
+### Why the data folder is still named ClaudeAccountManager (do not rename it)
 
-The app is called AI Account Manager, but `app/dist-electron/main.cjs` keeps its
-data directory at `%APPDATA%\ClaudeAccountManager` **deliberately**. Renaming it
-would orphan every existing install's accounts, settings and encrypted API keys.
+> **The app is branded AI Account Manager. Its data directory is not, and that
+> is intentional.** All accounts, settings, usage history, and the
+> DPAPI-encrypted API key vault live in:
+>
+> ```
+> %APPDATA%\ClaudeAccountManager
+> ```
+>
+> This is the app's pre-rename identity, kept as-is so every existing install
+> upgrades in place with zero user action. **If this string is ever changed in
+> `appDataDir()` (`app/dist-electron/main.cjs`) without a migration, every
+> existing install will silently look freshly installed** — no accounts, no
+> settings, no API keys. Nothing is actually deleted, but nothing loads either.
 
-If you ever do rename it, note that Electron's `safeStorage` master key lives in
-a **separate** `Local State` file inside Electron's own userData folder
-(`%APPDATA%\<productName>`), and must be carried across too — otherwise every
-API key reports *"Stored key could not be decrypted"* even though the vault
-copied perfectly. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+If a rename is ever genuinely needed, it requires two things, not one:
+
+1. **Copy the app data folder itself** — `%APPDATA%\ClaudeAccountManager` →
+   the new name.
+2. **Copy the separate Electron `Local State` file**, which holds the
+   `safeStorage` master key, from Electron's own userData folder
+   (`%APPDATA%\<old productName>\Local State`) to
+   `%APPDATA%\<new productName>\Local State`. Skipping this step is the
+   subtle failure: the app data folder copies perfectly, the app looks like it
+   migrated, and then **every API key reports "Stored key could not be
+   decrypted"** because the vault's ciphertext was sealed with a master key
+   that no longer exists anywhere.
+
+Full detail and recovery steps: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ---
 
