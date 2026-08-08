@@ -24,8 +24,8 @@ showing balance, spend and usage trends where each provider's API exposes them.
 
 ## Quick start for users
 
-You need Windows 10 or 11 and a GitHub account **invited to this repository** —
-it is private, so the Releases page is invisible until you accept the invite.
+You need Windows 10 or 11. No GitHub account is required — the Releases page is
+public.
 
 1. **Download.** Go to the [Releases](../../releases) page, open the latest
    release, and download `AIAccountManager-Setup-<version>.exe` from **Assets**.

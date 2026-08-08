@@ -26,9 +26,8 @@ There are two routes. **Almost everyone wants Option A.**
   If that prints a version number you are ready. If it says the command is not
   recognised, install Claude Code first from
   <https://claude.com/claude-code>, then close and reopen PowerShell.
-- A **GitHub account invited to this repository.** It is private, so the
-  Releases page is invisible until your invite is accepted — check your email
-  for the invitation and click Accept first.
+- **No GitHub account needed.** This repository is public, so the Releases page
+  and the installer download are open to anyone.
 
 ### Step 1 — Download
 
@@ -156,8 +155,10 @@ winget install --id Git.Git -e
 winget install --id GitHub.cli -e
 ```
 
-**Close PowerShell and open a new window** so the new commands are found. Then
-sign in to GitHub — a browser window opens, use the invited account:
+**Close PowerShell and open a new window** so the new commands are found.
+
+The repository is public, so cloning needs no sign-in. Sign in only if you intend
+to push changes or open a pull request — a browser window opens:
 
 ```powershell
 gh auth login --web
