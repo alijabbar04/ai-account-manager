@@ -27,8 +27,7 @@
     "productName": "AI Account Manager",
     "asar": true,
     "files": [
-      "app/**/*",
-      "package.json"
+      "**/*"
     ],
     "extraResources": [
       {
@@ -49,7 +48,9 @@
           "arch": ["x64"]
         }
       ],
-      "publisherName": "AI Account Manager contributors"
+      "signtoolOptions": {
+        "publisherName": "AI Account Manager contributors"
+      }
     },
     "nsis": {
       "oneClick": false,
