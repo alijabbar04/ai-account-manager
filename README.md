@@ -121,8 +121,8 @@ Build the installer:
 | `npm run release:manifest` | Generate `release/latest.json` for the update channel |
 | `npm run format` | Prettier across `app`, `scripts`, `tests`, `.github` |
 
-Node 22 is what the CI workflow uses. The workflow uses pnpm; the npm scripts
-work equally well locally.
+Node 22 is what the CI workflow uses. The supported-reader workflow uses the
+same npm scripts documented here.
 
 ### Layout
 
@@ -134,6 +134,7 @@ work equally well locally.
 | `assets/USAGE_TRACKING_GUIDE.pdf` | The in-app 📖 guide, shipped as an unpacked extra resource |
 | `scripts/` | Runtime verification and release-manifest tooling |
 | `tests/` | Regression tests for alerts, update manifests and required runtime surfaces |
+| `reader/` | Supported versioned read-only usage library and body-only CLI |
 | `build/icon.ico` | Application icon |
 | `.github/workflows/release.yml` | Windows build / sign / release workflow |
 
@@ -160,6 +161,25 @@ and stays on the machine that runs the app.
   them from encrypted repository secrets.
 - **All local state lives outside this repo**, in `%APPDATA%\ClaudeAccountManager`
   (see the note below).
+
+### Supported read-only automation
+
+Version 1.4.1 includes a maintained, versioned usage-reader interface for local
+automation. It consumes one explicit opaque profile allowlist and reads only
+the bounded `profiles.json` and `usage-snapshots.json` stores. It never opens
+credentials, refreshes a session, invokes Electron/Codex, reads the environment,
+or creates an HTTP/socket transport. UNC and device paths are rejected before
+filesystem access; callers remain responsible for supplying a trusted local
+filesystem directory rather than a mapped or remotely mounted volume. Output
+contains normalized five-hour and weekly
+quota windows for one requested profile and no name, path, key, cookie, session,
+prompt, or provider body.
+
+The authority fields in its request are labelled as a caller estimate. A
+consumer must independently authorize the same profile and reject stale,
+cached, revoked, ambiguous, or mismatched observations. See
+[the usage-reader contract](docs/USAGE_READER.md) for the exact schema, bounds,
+failure behavior, and command.
 
 ### Why the data folder is still named ClaudeAccountManager (do not rename it)
 
