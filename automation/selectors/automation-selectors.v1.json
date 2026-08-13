@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "revision": "2026-08-v1",
+  "providers": [
+    {
+      "id": "claudeDesktop",
+      "surface": "desktop",
+      "contextNames": ["Claude", "Cowork", "Claude Code"],
+      "promptNames": [
+        "Claude wants to use computer",
+        "Claude wants to use javascript_tool"
+      ],
+      "allowNames": ["Allow once", "Allow this action"],
+      "liveEligible": false,
+      "status": "needs-live-test"
+    },
+    {
+      "id": "claudeChrome",
+      "surface": "chrome-side-panel",
+      "contextNames": ["Claude", "Cowork", "Claude Code"],
+      "promptNames": [
+        "Claude wants to use computer",
+        "Claude wants to use javascript_tool",
+        "New permissions required"
+      ],
+      "allowNames": ["Allow once", "Allow this action"],
+      "liveEligible": false,
+      "status": "needs-live-test"
+    },
+    {
+      "id": "chatgptDesktop",
+      "surface": "desktop",
+      "contextNames": ["ChatGPT", "Codex", "Work"],
+      "promptNames": [],
+      "allowNames": [],
+      "liveEligible": false,
+      "status": "needs-live-test"
+    },
+    {
+      "id": "chatgptBrowser",
+      "surface": "browser",
+      "contextNames": ["ChatGPT"],
+      "promptNames": [],
+      "allowNames": [],
+      "liveEligible": false,
+      "status": "unsupported-until-scoped"
+    }
+  ]
+}
