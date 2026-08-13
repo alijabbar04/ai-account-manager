@@ -19,7 +19,7 @@ Gemini and OpenRouter.
 > local Codex CLI, and each provider's own public API. It is not a Claude or
 > ChatGPT product and is not endorsed by any provider named here.
 
-![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-blue) ![Electron](https://img.shields.io/badge/Electron-37-9feaf9) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-blue) ![Electron](https://img.shields.io/badge/Electron-43-9feaf9) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
@@ -121,8 +121,9 @@ Build the installer:
 | `npm run release:manifest` | Generate `release/latest.json` for the update channel |
 | `npm run format` | Prettier across `app`, `scripts`, `tests`, `.github` |
 
-Node 22 is what the CI workflow uses. The supported-reader workflow uses the
-same npm scripts documented here.
+Node 24 is what the CI workflow uses. The supported-reader workflow uses the
+same npm scripts documented here. The release workflow accepts only the exact
+`v<package.version>` tag and reruns the packed-reader consumer before signing.
 
 ### Layout
 
@@ -171,9 +172,11 @@ credentials, refreshes a session, invokes Electron/Codex, reads the environment,
 or creates an HTTP/socket transport. UNC and device paths are rejected before
 filesystem access; callers remain responsible for supplying a trusted local
 filesystem directory rather than a mapped or remotely mounted volume. Output
-contains normalized five-hour and weekly
-quota windows for one requested profile and no name, path, key, cookie, session,
-prompt, or provider body.
+contains normalized five-hour and weekly quota windows for one requested
+profile. Protocol 2 distinguishes active windows from explicit inactive
+windows: inactive capacity and reset values are `null` and must never authorize
+allocation. Output contains no name, path, key, cookie, session, prompt, or
+provider body.
 
 The authority fields in its request are labelled as a caller estimate. A
 consumer must independently authorize the same profile and reject stale,

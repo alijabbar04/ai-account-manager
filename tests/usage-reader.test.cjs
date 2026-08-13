@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -17,7 +18,7 @@ const PROFILE_ID = "profile-owned-1";
 
 function request(directory, overrides = {}) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     dataDirectory: directory,
     requestedProfileId: PROFILE_ID,
     profileAllowlist: [
@@ -127,7 +128,7 @@ test("emits one bounded authoritative profile projection without sensitive field
     "weekly",
   ]);
   assert.equal(result.reader.readerId, READER_ID);
-  assert.equal(result.reader.protocolVersion, 1);
+  assert.equal(result.reader.protocolVersion, 2);
   assert.match(result.reader.configurationFingerprint, /^[a-f0-9]{64}$/);
   assert.equal(result.profile.scopedProfileId, PROFILE_ID);
   assert.equal(result.profile.authorityEstimate, "caller-allowlist");
@@ -135,12 +136,14 @@ test("emits one bounded authoritative profile projection without sensitive field
   assert.equal(result.observation.confidence, "high");
   assert.deepEqual(result.observation.fiveHour, {
     windowId: "claude-code:five-hour:2026-08-12T04:00:00.000Z",
+    status: "active",
     usedBasisPoints: 1234,
     remainingBasisPoints: 8766,
     resetAt: "2026-08-12T04:00:00.000Z",
   });
   assert.equal(result.observation.weekly.usedBasisPoints, 5500);
   assert.equal(result.observation.weekly.remainingBasisPoints, 4500);
+  assert.equal(result.observation.weekly.status, "active");
   assert.equal(result.observation.observedAt, "2026-08-11T23:59:00.000Z");
   assert.equal(result.observation.freshUntil, "2026-08-12T00:04:00.000Z");
   const serialized = JSON.stringify(result);
@@ -169,6 +172,9 @@ test("labels retained limits from a failed refresh as cached and low confidence"
 
 test("requires an exact explicit profile allowlist and independent authority fields", (t) => {
   const directory = fixture(t);
+  expectCode("INVALID_REQUEST", () =>
+    readScopedUsage(request(directory, { schemaVersion: 1 }), { now: () => NOW }),
+  );
   expectCode("PROFILE_NOT_ALLOWED", () =>
     readScopedUsage(
       request(directory, {
@@ -188,6 +194,72 @@ test("requires an exact explicit profile allowlist and independent authority fie
       { now: () => NOW },
     ),
   );
+});
+
+test("represents inactive required windows without inventing capacity", (t) => {
+  const inactive = snapshots();
+  inactive[PROFILE_ID].limits[0].isActive = false;
+  inactive[PROFILE_ID].limits[0].percent = 0;
+  const directory = fixture(t, inactive);
+  const result = readScopedUsage(request(directory), { now: () => NOW });
+  assert.deepEqual(result.observation.fiveHour, {
+    windowId: "claude-code:five-hour:inactive",
+    status: "inactive",
+    usedBasisPoints: null,
+    remainingBasisPoints: null,
+    resetAt: null,
+  });
+  assert.equal(result.observation.weekly.status, "active");
+  assert.equal(result.observation.sourceClass, "provider-authoritative");
+  assert.equal(result.observation.confidence, "high");
+});
+
+test("ignores inactive resets when both required windows are unavailable", (t) => {
+  const inactive = snapshots();
+  inactive[PROFILE_ID].limits[0] = {
+    kind: "session",
+    isActive: false,
+    percent: 0,
+    resetsAt: "2026-08-12T00:01:00.000Z",
+  };
+  inactive[PROFILE_ID].limits[1] = {
+    kind: "weekly_all",
+    isActive: false,
+    percent: 0,
+    resetsAt: "2026-08-12T00:02:00.000Z",
+  };
+  const result = readScopedUsage(request(fixture(t, inactive)), {
+    now: () => NOW,
+  });
+  assert.deepEqual(result.observation.fiveHour, {
+    windowId: "claude-code:five-hour:inactive",
+    status: "inactive",
+    usedBasisPoints: null,
+    remainingBasisPoints: null,
+    resetAt: null,
+  });
+  assert.deepEqual(result.observation.weekly, {
+    windowId: "claude-code:weekly:inactive",
+    status: "inactive",
+    usedBasisPoints: null,
+    remainingBasisPoints: null,
+    resetAt: null,
+  });
+  assert.equal(result.observation.freshUntil, "2026-08-12T00:04:00.000Z");
+});
+
+test("ignores one bounded inactive scoped limit without poisoning weekly-all", (t) => {
+  const snapshot = snapshots();
+  snapshot[PROFILE_ID].limits.push({
+    kind: "weekly_scoped",
+    group: "model",
+    isActive: false,
+  });
+  const directory = fixture(t, snapshot);
+  const result = readScopedUsage(request(directory), { now: () => NOW });
+  assert.equal(result.observation.fiveHour.status, "active");
+  assert.equal(result.observation.weekly.status, "active");
+  assert.equal(result.observation.weekly.usedBasisPoints, 5500);
 });
 
 test("fails closed for absent, duplicate, malformed, future, and contradictory data", (t) => {
@@ -223,6 +295,27 @@ test("fails closed for absent, duplicate, malformed, future, and contradictory d
     readScopedUsage(request(directory), { now: () => NOW }),
   );
 
+  const incompleteActive = snapshots();
+  delete incompleteActive[PROFILE_ID].limits[0].percent;
+  fs.writeFileSync(
+    path.join(directory, "usage-snapshots.json"),
+    JSON.stringify(incompleteActive),
+  );
+  expectCode("SNAPSHOT_INVALID", () =>
+    readScopedUsage(request(directory), { now: () => NOW }),
+  );
+
+  const malformedInactive = snapshots();
+  malformedInactive[PROFILE_ID].limits[0].isActive = false;
+  malformedInactive[PROFILE_ID].limits[0].percent = -1;
+  fs.writeFileSync(
+    path.join(directory, "usage-snapshots.json"),
+    JSON.stringify(malformedInactive),
+  );
+  expectCode("SNAPSHOT_INVALID", () =>
+    readScopedUsage(request(directory), { now: () => NOW }),
+  );
+
   fs.writeFileSync(
     path.join(directory, "usage-snapshots.json"),
     JSON.stringify(snapshots({ ok: true, error: "contradictory failure" })),
@@ -231,11 +324,11 @@ test("fails closed for absent, duplicate, malformed, future, and contradictory d
     readScopedUsage(request(directory), { now: () => NOW }),
   );
 
-  const inactive = snapshots();
-  inactive[PROFILE_ID].limits[0].isActive = false;
+  const malformedActivity = snapshots();
+  malformedActivity[PROFILE_ID].limits[0].isActive = "false";
   fs.writeFileSync(
     path.join(directory, "usage-snapshots.json"),
-    JSON.stringify(inactive),
+    JSON.stringify(malformedActivity),
   );
   expectCode("SNAPSHOT_INVALID", () =>
     readScopedUsage(request(directory), { now: () => NOW }),
@@ -258,6 +351,19 @@ test("fails closed for absent, duplicate, malformed, future, and contradictory d
   fs.writeFileSync(
     path.join(directory, "usage-snapshots.json"),
     JSON.stringify(duplicate),
+  );
+  expectCode("SNAPSHOT_AMBIGUOUS", () =>
+    readScopedUsage(request(directory), { now: () => NOW }),
+  );
+
+  const duplicateActivity = snapshots();
+  duplicateActivity[PROFILE_ID].limits.push({
+    kind: "session",
+    isActive: false,
+  });
+  fs.writeFileSync(
+    path.join(directory, "usage-snapshots.json"),
+    JSON.stringify(duplicateActivity),
   );
   expectCode("SNAPSHOT_AMBIGUOUS", () =>
     readScopedUsage(request(directory), { now: () => NOW }),
@@ -431,7 +537,10 @@ test("CLI emits a versioned body-only envelope and finite redacted failures", (t
   });
   assert.equal(success.status, 0, success.stderr);
   const body = JSON.parse(success.stdout);
+  assert.equal(body.schemaVersion, 2);
   assert.equal(body.ok, true);
+  assert.equal(body.result.schemaVersion, 2);
+  assert.equal(body.result.reader.protocolVersion, 2);
   assert.equal(body.result.requestedProfileId, PROFILE_ID);
   assert.equal(success.stdout.includes(directory), false);
 
@@ -443,7 +552,7 @@ test("CLI emits a versioned body-only envelope and finite redacted failures", (t
   });
   assert.equal(failure.status, 1);
   assert.deepEqual(JSON.parse(failure.stdout), {
-    schemaVersion: 1,
+    schemaVersion: 2,
     ok: false,
     error: {
       code: "INVALID_REQUEST",
@@ -461,7 +570,7 @@ test("CLI emits a versioned body-only envelope and finite redacted failures", (t
   });
   assert.equal(oversized.status, 2);
   assert.deepEqual(JSON.parse(oversized.stdout), {
-    schemaVersion: 1,
+    schemaVersion: 2,
     ok: false,
     error: {
       code: "INVALID_REQUEST",
@@ -497,7 +606,7 @@ test("configured module surface composes directly as one scoped async reader", a
   const directory = fixture(t);
   const configured = createScopedUsageReader(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       dataDirectory: directory,
       profileAllowlist: request(directory).profileAllowlist,
       freshnessMs: 300_000,
@@ -506,7 +615,24 @@ test("configured module surface composes directly as one scoped async reader", a
   );
   assert.equal(configured.fixtureOnly, false);
   assert.equal(configured.readerId, READER_ID);
+  assert.equal(configured.protocolVersion, 2);
   assert.match(configured.configurationFingerprint, /^[a-f0-9]{64}$/);
+  const canonicalDirectory = fs.realpathSync.native(directory);
+  const exactConfigurationProjection =
+    `{"dataDirectory":${JSON.stringify(canonicalDirectory)},` +
+    '"freshnessMs":300000,"profileAllowlist":[' +
+    '{"authorization":"authorized","ownership":"owned",' +
+    `"profileId":${JSON.stringify(PROFILE_ID)},` +
+    '"providerId":"claude-code","revocation":"not-revoked"}],' +
+    '"schemaVersion":2}';
+  const expectedConfigurationFingerprint = crypto
+    .createHash("sha256")
+    .update(exactConfigurationProjection)
+    .digest("hex");
+  assert.equal(
+    configured.configurationFingerprint,
+    expectedConfigurationFingerprint,
+  );
   const result = await configured.readScopedUsage(PROFILE_ID);
   assert.equal(
     result.reader.configurationFingerprint,
@@ -515,7 +641,7 @@ test("configured module surface composes directly as one scoped async reader", a
   const alternateDirectory = fixture(t);
   const alternate = createScopedUsageReader(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       dataDirectory: alternateDirectory,
       profileAllowlist: request(alternateDirectory).profileAllowlist,
       freshnessMs: 300_000,
@@ -524,7 +650,7 @@ test("configured module surface composes directly as one scoped async reader", a
   );
   const alternateFreshness = createScopedUsageReader(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       dataDirectory: directory,
       profileAllowlist: request(directory).profileAllowlist,
       freshnessMs: 301_000,
@@ -533,7 +659,7 @@ test("configured module surface composes directly as one scoped async reader", a
   );
   const alternateAuthority = createScopedUsageReader(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       dataDirectory: directory,
       profileAllowlist: [
         {
@@ -595,7 +721,7 @@ test("configured module surface composes directly as one scoped async reader", a
   const times = [NOW, NOW, NOW, NOW + 10_000];
   const expiring = createScopedUsageReader(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       dataDirectory: directory,
       profileAllowlist: request(directory).profileAllowlist,
       freshnessMs: 300_000,
@@ -616,7 +742,7 @@ test("configured module surface composes directly as one scoped async reader", a
   );
   const invalidTimestampReader = createScopedUsageReader(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       dataDirectory: invalidTimestampDirectory,
       profileAllowlist: request(invalidTimestampDirectory).profileAllowlist,
       freshnessMs: 300_000,

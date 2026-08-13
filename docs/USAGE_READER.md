@@ -13,7 +13,7 @@ The reader is deliberately narrow:
 - only `profiles.json` and `usage-snapshots.json` are opened, each with a 1 MiB
   ceiling;
 - one requested profile is returned with normalized five-hour and weekly
-  basis-point windows;
+  windows, each explicitly active or inactive;
 - a successful provider refresh is labelled `provider-authoritative`; retained
   limits after a failed refresh are labelled `provider-cached` and low
   confidence; and
@@ -41,11 +41,11 @@ Get-Content .\reader-request.json -Raw |
   node .\reader\usage-reader-cli.cjs
 ```
 
-Request schema version 1:
+Request schema version 2:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "dataDirectory": "C:\\Users\\example\\AppData\\Roaming\\ClaudeAccountManager",
   "requestedProfileId": "opaque-profile-id",
   "profileAllowlist": [
@@ -65,13 +65,13 @@ Success is an exact envelope of this form (timestamps and opaque IDs vary):
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "ok": true,
   "result": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "reader": {
       "readerId": "ai-account-manager.usage-reader",
-      "protocolVersion": 1,
+      "protocolVersion": 2,
       "runtimeVersion": "1.4.1",
       "repositoryUrl": "https://github.com/alijabbar04/ai-account-manager.git",
       "configurationFingerprint": "<lowercase SHA-256>"
@@ -94,12 +94,14 @@ Success is an exact envelope of this form (timestamps and opaque IDs vary):
       "freshUntil": "2026-08-12T00:05:00.000Z",
       "fiveHour": {
         "windowId": "claude-code:five-hour:<reset timestamp>",
+        "status": "active",
         "usedBasisPoints": 1234,
         "remainingBasisPoints": 8766,
         "resetAt": "2026-08-12T04:00:00.000Z"
       },
       "weekly": {
         "windowId": "claude-code:weekly:<reset timestamp>",
+        "status": "active",
         "usedBasisPoints": 5500,
         "remainingBasisPoints": 4500,
         "resetAt": "2026-08-17T00:00:00.000Z"
@@ -112,17 +114,36 @@ Success is an exact envelope of this form (timestamps and opaque IDs vary):
 `ownership`, `authorization`, and `revocation` retain the exact allowlist enum
 supplied for that profile. A successful refresh is
 `provider-authoritative`/`high`; retained limits after a failed refresh are
-`provider-cached`/`low`. Every usage value is an integer from 0 through 10,000,
-used plus remaining must equal 10,000, resets must follow observation time, and
-`freshUntil` is capped by both the configured freshness and the earliest reset.
+`provider-cached`/`low`. An active window has integer usage values from 0
+through 10,000, used plus remaining equals 10,000, and its reset follows the
+observation time. An inactive required window is exactly:
 
-Failure is `{ "schemaVersion": 1, "ok": false, "error": { "code", "message" } }`
+```json
+{
+  "windowId": "claude-code:five-hour:inactive",
+  "status": "inactive",
+  "usedBasisPoints": null,
+  "remainingBasisPoints": null,
+  "resetAt": null
+}
+```
+
+Account Manager may cache a zero placeholder when the provider omits inactive
+capacity. Protocol 2 validates any supplied placeholder but never exposes it as
+usage: inactive means unavailable and non-allocatable, not zero usage. A
+bounded inactive `weekly_scoped` or other unrelated kind does not replace or
+invalidate the one required `weekly_all` window. Duplicate required kinds,
+malformed activity flags, or active windows without exact capacity/reset data
+fail closed. `freshUntil` is capped by configured freshness and the earliest
+active reset; inactive windows do not invent a reset.
+
+Failure is `{ "schemaVersion": 2, "ok": false, "error": { "code", "message" } }`
 and uses a non-zero exit status. The library surface is exported as
 `ai-account-manager-desktop/usage-reader` for callers that already provide a
 trusted in-process boundary.
 
 The protocol fixes `readerId` to `ai-account-manager.usage-reader`,
-`protocolVersion` to `1`, `runtimeVersion` to `1.4.1`, provider to `claude-code`,
+`protocolVersion` to `2`, `runtimeVersion` to `1.4.1`, provider to `claude-code`,
 and timezone to `Europe/London`. A SHA-256 configuration fingerprint binds the
 canonical store directory, full allowlist, and freshness policy without
 returning the directory itself. Inputs, files, profiles, allowlist entries,

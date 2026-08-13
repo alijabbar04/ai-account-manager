@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 "use strict";
 
-const { finiteError, readScopedUsage } = require("./usage-reader.cjs");
+const {
+  READER_PROTOCOL_VERSION,
+  finiteError,
+  readScopedUsage,
+} = require("./usage-reader.cjs");
 
 const MAX_STDIN_BYTES = 64 * 1024;
 let bytes = 0;
@@ -13,7 +17,7 @@ process.stdin.on("data", (chunk) => {
   if (bytes > MAX_STDIN_BYTES) {
     process.stdout.write(
       `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: READER_PROTOCOL_VERSION,
         ok: false,
         error: {
           code: "INVALID_REQUEST",
@@ -33,12 +37,12 @@ process.stdin.on("end", () => {
   try {
     const result = readScopedUsage(JSON.parse(body));
     process.stdout.write(
-      `${JSON.stringify({ schemaVersion: 1, ok: true, result })}\n`,
+      `${JSON.stringify({ schemaVersion: READER_PROTOCOL_VERSION, ok: true, result })}\n`,
     );
   } catch (error) {
     const safe = finiteError(error);
     process.stdout.write(
-      `${JSON.stringify({ schemaVersion: 1, ok: false, error: safe })}\n`,
+      `${JSON.stringify({ schemaVersion: READER_PROTOCOL_VERSION, ok: false, error: safe })}\n`,
     );
     process.exitCode = 1;
   }

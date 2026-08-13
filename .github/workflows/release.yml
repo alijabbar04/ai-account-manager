@@ -6,33 +6,72 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require the exact package-version tag
+        shell: pwsh
+        env:
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $manifest = Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json
+          $expectedTag = "v$($manifest.version)"
+          if ($env:RELEASE_REF_TYPE -cne 'tag' -or $env:RELEASE_TAG -cne $expectedTag) {
+            throw "Release ref must be the exact package-version tag."
+          }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install
-      - run: pnpm test
-      - name: Build and sign installer
-        run: pnpm build:win
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run audit
+      - run: npm test
+      - run: npm run test:consumer
+      - name: Require release signing and update inputs
+        shell: pwsh
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          UPDATE_DOWNLOAD_URL: ${{ secrets.UPDATE_DOWNLOAD_URL }}
+        run: |
+          foreach ($name in 'CSC_LINK', 'CSC_KEY_PASSWORD', 'UPDATE_DOWNLOAD_URL') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required release input is unavailable: $name"
+            }
+          }
+      - name: Build and sign installer
+        run: npm run package:win
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      - name: Verify the installer signature
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath release -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one installer; found $($installers.Count)."
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installers[0].FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Installer signature is not valid: $($signature.Status)"
+          }
       - name: Generate secure update manifest
-        run: pnpm release:manifest
+        run: npm run release:manifest
         env:
           UPDATE_DOWNLOAD_URL: ${{ secrets.UPDATE_DOWNLOAD_URL }}
           RELEASE_NOTES: ${{ github.event.head_commit.message }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ai-account-manager-windows
+          if-no-files-found: error
+          retention-days: 7
           path: |
             release/*.exe
             release/latest.json

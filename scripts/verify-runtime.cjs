@@ -33,7 +33,7 @@ for (const file of [
 const usageReader = fs.readFileSync(files.usageReader, "utf8");
 for (const surface of [
   'READER_ID = "ai-account-manager.usage-reader"',
-  "READER_PROTOCOL_VERSION = 1",
+  "READER_PROTOCOL_VERSION = 2",
   'readBoundedJson(directory, "profiles.json")',
   'readBoundedJson(directory, "usage-snapshots.json")',
   'authorityEstimate: "caller-allowlist"',

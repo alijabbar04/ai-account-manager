@@ -12,13 +12,24 @@
   "bin": {
     "ai-account-manager-usage-reader": "reader/usage-reader-cli.cjs"
   },
+  "files": [
+    "app/dist-electron",
+    "app/dist",
+    "app/package.json",
+    "reader",
+    "README.md",
+    "LICENSE",
+    "docs/USAGE_READER.md"
+  ],
   "scripts": {
     "format": "prettier --write app scripts tests .github",
     "verify": "node scripts/verify-runtime.cjs",
+    "audit": "npm audit --audit-level=high",
     "test": "node --test tests/*.test.cjs && node scripts/verify-runtime.cjs",
     "test:consumer": "node scripts/verify-usage-reader-consumer.cjs",
     "build:dir": "npm run test && electron-builder --dir --win",
-    "build:win": "npm run test && electron-builder --win nsis --publish never",
+    "build:win": "npm run test && npm run package:win",
+    "package:win": "electron-builder --win nsis --publish never",
     "release:manifest": "node scripts/make-manifest.cjs",
     "usage:read": "node reader/usage-reader-cli.cjs"
   },
@@ -27,7 +38,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "electron": "^37.2.6",
+    "electron": "^43.4.0",
     "electron-builder": "^26.0.12",
     "prettier": "^3.6.2"
   },
@@ -54,7 +65,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "signtoolOptions": {
