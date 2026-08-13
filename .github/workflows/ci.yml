@@ -1,0 +1,40 @@
+name: Windows CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install JavaScript dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Verify formatting
+        run: pnpm format:check
+      - name: Run JavaScript and native helper tests
+        run: pnpm test
+      - name: Build unpacked Windows application
+        run: pnpm build:dir
+      - name: Upload reviewable Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-account-manager-windows-unpacked
+          path: release/win-unpacked/
+          if-no-files-found: error

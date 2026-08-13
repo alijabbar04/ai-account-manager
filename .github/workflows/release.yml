@@ -17,8 +17,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm format:check
       - run: pnpm test
       - name: Build and sign installer
         run: pnpm build:win

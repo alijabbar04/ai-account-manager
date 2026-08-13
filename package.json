@@ -1,16 +1,22 @@
 {
   "name": "ai-account-manager-desktop",
   "productName": "AI Account Manager",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Manage Claude accounts, GPT/Codex usage, provider permissions, alerts, and API analytics.",
   "private": true,
   "main": "app/dist-electron/main.cjs",
   "scripts": {
     "format": "prettier --write app scripts tests .github",
+    "format:check": "prettier --check app scripts tests .github",
     "verify": "node scripts/verify-runtime.cjs",
-    "test": "node --test tests/*.test.cjs && node scripts/verify-runtime.cjs",
-    "build:dir": "npm run test && electron-builder --dir --win",
-    "build:win": "npm run test && electron-builder --win nsis --publish never",
+    "test:runtime": "node --test tests/*.test.cjs && node scripts/verify-runtime.cjs",
+    "automation:test": "dotnet run --project automation/tests/AIAccountManager.Automation.Tests/AIAccountManager.Automation.Tests.csproj --configuration Release",
+    "automation:harness:build": "dotnet build automation/tests/AIAccountManager.Automation.Harness/AIAccountManager.Automation.Harness.csproj --configuration Release",
+    "automation:publish": "dotnet publish automation/src/AIAccountManager.Automation/AIAccountManager.Automation.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true --output automation/artifacts/win-x64 && node scripts/stage-automation-helper.cjs",
+    "automation:soak": "automation/artifacts/win-x64/AIAccountManager.Automation.exe --performance-soak 60",
+    "test": "npm run test:runtime && npm run automation:test && npm run automation:harness:build",
+    "build:dir": "npm run automation:publish && npm test && electron-builder --dir --win",
+    "build:win": "npm run automation:publish && npm test && electron-builder --win nsis --publish never",
     "release:manifest": "node scripts/make-manifest.cjs"
   },
   "dependencies": {
@@ -33,6 +39,18 @@
       {
         "from": "assets/USAGE_TRACKING_GUIDE.pdf",
         "to": "USAGE_TRACKING_GUIDE.pdf"
+      },
+      {
+        "from": "automation/artifacts/win-x64",
+        "to": "automation",
+        "filter": [
+          "**/AIAccountManager.Automation.exe",
+          "**/automation-selectors.v1.json"
+        ]
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
       }
     ],
     "directories": {
@@ -42,10 +60,15 @@
     "artifactName": "AI-Account-Manager-Setup-${version}.${ext}",
     "win": {
       "icon": "build/icon.ico",
+      "signExts": [
+        ".exe"
+      ],
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "signtoolOptions": {
@@ -53,6 +76,7 @@
       }
     },
     "nsis": {
+      "include": "build/installer.nsh",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,

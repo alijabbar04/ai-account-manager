@@ -40,14 +40,17 @@ function sanitizeAlertSettings(input) {
 }
 
 function sha256(file) {
-  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(file))
+    .digest("hex");
 }
 
 function validateManifest(manifest) {
   return Boolean(
     manifest?.version &&
-      String(manifest.downloadUrl ?? "").startsWith("https://") &&
-      /^[a-f0-9]{64}$/i.test(manifest.sha256 ?? ""),
+    String(manifest.downloadUrl ?? "").startsWith("https://") &&
+    /^[a-f0-9]{64}$/i.test(manifest.sha256 ?? ""),
   );
 }
 

@@ -27,7 +27,7 @@ Gemini and OpenRouter.
 
 > ### This repository's source of record is *formatted runtime JavaScript*, not TypeScript.
 
-Versions 1.3.0 through 1.4.1 were produced by editing the app's built output
+Versions 1.3.0 through 1.5.0 were produced by editing the app's built output
 directly and repacking it — the original TypeScript/React project for those
 releases no longer exists. What you see in `app/` is that runtime, recovered and
 formatted: readable, tested and reproducible, but not the original sources.
@@ -71,7 +71,23 @@ Full walkthrough: [docs/INSTALL.md](docs/INSTALL.md).
 
 ---
 
-## What's in 1.4.1
+## What's in 1.5.0
+
+- A dedicated **Automation & Sessions** area with Permissions, Session launcher,
+  and searchable/exportable redacted Activity views.
+- A self-contained, standard-user Windows UI Automation helper with a
+  current-user-only authenticated pipe, trusted package/signer validation,
+  bounded event-driven recognition, Dry run, pause, and emergency hotkey.
+- Persistent isolated Chrome/Edge app profiles for authorised Claude and
+  ChatGPT accounts, with per-profile locks and correct-profile HTTPS login-link
+  routing that never stores credentials or links.
+- Provider-native, profile-scoped Claude Code and Codex permission modes;
+  unobserved desktop UIA selectors remain action-blocked pending live tests.
+- Tray/background monitoring, current-user startup, explicit browser-data
+  cleanup, native helper packaging, Windows CI, and a documented capability
+  matrix and architecture decision.
+
+Also retained from 1.4.1:
 
 - **GPT/Codex vs Claude daily token history**, with 7, 30 and 90-day views.
 - **Reliable Windows Codex discovery** across Codex Desktop, npm, VS Code and
@@ -97,8 +113,10 @@ cd ai-account-manager
 .\setup.ps1
 ```
 
-`setup.ps1` checks your Node version, installs dependencies, and runs the test
-suite so you know the checkout is sound before you touch anything.
+`setup.ps1` checks Node 20+ and a .NET 8+ SDK, installs dependencies, and runs
+the JavaScript and native helper suites so you know the checkout is sound
+before you touch anything. End users do not need .NET; release builds bundle a
+self-contained helper.
 
 Run from source:
 
@@ -109,13 +127,16 @@ npm run build:dir     # package to release\win-unpacked, then launch it
 Build the installer:
 
 ```powershell
-.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.4.1.exe
+.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.5.0.exe
 ```
 
 | Command | What it does |
 |---|---|
 | `npm test` | Unit tests **and** runtime verification — run this before every commit |
 | `npm run verify` | Runtime verification only |
+| `npm run automation:test` | Native recognition, trust, IPC, audit and settings tests |
+| `npm run automation:publish` | Self-contained win-x64 helper used by packaging |
+| `npm run automation:soak` | Measure helper CPU, working set, handles, threads and events |
 | `npm run build:dir` | Unpacked build into `release\win-unpacked` |
 | `npm run build:win` | NSIS installer |
 | `npm run release:manifest` | Generate `release/latest.json` for the update channel |
@@ -130,7 +151,9 @@ work equally well locally.
 |---|---|
 | `app/dist-electron/main.cjs` | Electron main process — accounts, launcher, usage, Codex discovery, alerts, updates |
 | `app/dist-electron/preload.cjs` | The context-bridge surface exposed to the renderer |
+| `app/dist-electron/automation-*.cjs` | Automation settings, redaction, helper client and session launcher |
 | `app/dist/assets/` | React renderer runtime and styles |
+| `automation/` | .NET 8 Windows UIA helper, selector catalog, tests and synthetic harness |
 | `assets/USAGE_TRACKING_GUIDE.pdf` | The in-app 📖 guide, shipped as an unpacked extra resource |
 | `scripts/` | Runtime verification and release-manifest tooling |
 | `tests/` | Regression tests for alerts, update manifests and required runtime surfaces |
@@ -160,6 +183,16 @@ and stays on the machine that runs the app.
   them from encrypted repository secrets.
 - **All local state lives outside this repo**, in `%APPDATA%\ClaudeAccountManager`
   (see the note below).
+- **Automation is fail-closed.** It starts Off and Dry run, requires a risk
+  acknowledgement, never drives secure/elevated/unknown surfaces, and keeps
+  unverified provider selectors detection-only.
+- **Isolated web sessions belong to their browser profile.** The app stores
+  profile labels and generated paths, never passwords/cookies/tokens, and does
+  not open a remote-debugging port.
+
+First use, safety boundaries, exact profile/login-link steps, emergency stop,
+diagnostics, uninstall behavior, measured performance, and the provider matrix
+are in [docs/AUTOMATION_AND_SESSIONS.md](docs/AUTOMATION_AND_SESSIONS.md).
 
 ### Why the data folder is still named ClaudeAccountManager (do not rename it)
 
@@ -225,8 +258,8 @@ Full detail and recovery steps: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.m
 Host the installer over HTTPS, then generate the manifest:
 
 ```powershell
-$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.4.1.exe'
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.4.1.exe'
+$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.5.0.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.5.0.exe'
 ```
 
 Host `release/latest.json` over HTTPS and paste that URL into
@@ -239,6 +272,8 @@ an HTTPS download and a published SHA-256 checksum before offering an update.
 |---|---|
 | [docs/INSTALL.md](docs/INSTALL.md) | Installing from scratch, assuming no technical background |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | When something fails: what it means and how to fix it |
+| [docs/AUTOMATION_AND_SESSIONS.md](docs/AUTOMATION_AND_SESSIONS.md) | Permission safety, session profiles, diagnostics, capability matrix and uninstall behavior |
+| [docs/architecture/automation-and-sessions.md](docs/architecture/automation-and-sessions.md) | Native helper, UIA, trust, IPC and authentication-routing ADR |
 | [assets/USAGE_TRACKING_GUIDE.pdf](assets/USAGE_TRACKING_GUIDE.pdf) | Why API usage pages can look empty — also the in-app 📖 guide |
 
 ## License

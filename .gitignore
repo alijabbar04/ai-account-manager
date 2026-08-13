@@ -2,6 +2,7 @@
 #  Dependencies and build output
 # ---------------------------------------------------------------------------
 node_modules/
+package-lock.json
 release/*
 !release/latest.example.json
 
@@ -11,6 +12,11 @@ release/*
 *.blockmap
 *.nupkg
 *.asar
+
+# Native automation helper build products (published into the installer by CI).
+automation/**/bin/
+automation/**/obj/
+automation/artifacts/
 
 # NOTE: app/ is TRACKED - it is this project's source of record (formatted
 # runtime JS, not build output). Never add app/ or app/dist* to this file.
@@ -66,6 +72,8 @@ Cookies-journal
 # ---------------------------------------------------------------------------
 *.log
 logs/
+automation-diagnostics-*.json
+automation-activity-*.json
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*

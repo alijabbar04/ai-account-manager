@@ -6,7 +6,7 @@ Two routes. **Almost everyone wants Option A.**
 
 - **Option A — just use the app.** Download an installer and run it. About five
   minutes, no admin rights.
-- **Option B — run from the source code.** Only if you need to *change* the app.
+- **Option B — run from the source code.** Only if you need to _change_ the app.
 
 ---
 
@@ -25,6 +25,7 @@ Two routes. **Almost everyone wants Option A.**
 
   If that prints a version you are ready. If not, install it from
   <https://claude.com/claude-code>, then close and reopen PowerShell.
+
 - **The Codex CLI is optional.** Install it if you want the GPT/Codex usage
   panel. Without it, that panel simply says it cannot find Codex; everything
   else works normally.
@@ -83,12 +84,12 @@ account for as long as it lives. There is no "switching".
 **VS Code** and **PowerShell** buttons do the same for those.
 
 > **VS Code catch:** if VS Code is already running, Windows hands the new window
-> to the existing process, which keeps *its* environment rather than the one the
+> to the existing process, which keeps _its_ environment rather than the one the
 > app set. Close VS Code fully first, or use a terminal launch.
 
 ### Step 6 — Optional: set a default account
 
-**Set Default** points every *new* terminal at that account, even outside this
+**Set Default** points every _new_ terminal at that account, even outside this
 app, by setting the user-level `CLAUDE_CONFIG_DIR` variable. Clear it just as
 easily. Terminals already open are unaffected.
 
@@ -108,7 +109,16 @@ find Codex, check `codex --version` works in a terminal.
 reminders, and Claude sign-ins that are about to expire. Off until you set them
 up.
 
-### Step 9 — Optional: track API key spending
+### Step 9 — Optional: Automation & Sessions
+
+The separate **Automation & Sessions** area can keep trusted provider permission
+monitoring alive in the tray and launch isolated Claude/ChatGPT browser
+profiles. It starts Off and Dry run and requires a risk acknowledgement. Read
+[AUTOMATION_AND_SESSIONS.md](AUTOMATION_AND_SESSIONS.md) before enabling live
+unattended modes; it includes the emergency stop, capability matrix, and exact
+steps for logging an authorised second account into the correct profile.
+
+### Step 10 — Optional: track API key spending
 
 Independent of the account features — skip if you do not use API keys directly.
 
@@ -121,12 +131,12 @@ empty dashboard later.
 
 What each provider actually exposes:
 
-| Provider | What you get |
-|---|---|
+| Provider       | What you get                                                                        |
+| -------------- | ----------------------------------------------------------------------------------- |
 | **OpenRouter** | Everything — balance plus live daily / weekly / monthly spend from one ordinary key |
-| **Anthropic** | A standard key validates only. Spend needs an organisation **Admin key** |
-| **OpenAI** | Same — a project key validates only; spend needs an **Admin key** |
-| **Gemini** | Validation only; usage can be estimated, not measured |
+| **Anthropic**  | A standard key validates only. Spend needs an organisation **Admin key**            |
+| **OpenAI**     | Same — a project key validates only; spend needs an **Admin key**                   |
+| **Gemini**     | Validation only; usage can be estimated, not measured                               |
 
 If your Anthropic pages look empty that is expected, not broken. Click
 **📖 Usage guide** on the provider page, or read
@@ -139,7 +149,7 @@ ever sent to that provider's own API.
 
 ## Option B — Run from the source code (developers)
 
-### Step 1 — Install Node.js
+### Step 1 — Install Node.js and the .NET SDK
 
 Download the **LTS** build from <https://nodejs.org> (22.x is what CI uses; 20 or
 newer required) and accept the defaults. Then, in a **new** PowerShell window:
@@ -150,6 +160,14 @@ npm --version
 ```
 
 No Visual Studio, Python or C++ toolchain is needed — no native modules.
+
+Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (or
+newer) as well. It builds the Windows UI Automation helper; release installers
+already bundle that helper, so this SDK is for source development only.
+
+```powershell
+dotnet --list-sdks
+```
 
 ### Step 2 — Install Git and the GitHub CLI
 
@@ -201,15 +219,15 @@ That packages into `release\win-unpacked`; launch
 
 ### Step 6 — Understand what you are editing
 
-**This project has no TypeScript build step.** Versions 1.3.0–1.4.1 were made by
+**This project has no TypeScript build step.** Versions 1.3.0–1.5.0 were made by
 editing the app's built output directly; the original TypeScript for those
-releases no longer exists. `app/` *is* the source:
+releases no longer exists. `app/` _is_ the source:
 
 - `app/dist-electron/main.cjs` — main process
 - `app/dist-electron/preload.cjs` — the context-bridge surface
 - `app/dist/assets/index-*.js` — React renderer
 
-Edit those directly, then **always** run `npm test`. It runs unit tests *and*
+Edit those directly, then **always** run `npm test`. It runs unit tests _and_
 `scripts/verify-runtime.cjs`, which asserts required IPC channels, Codex
 discovery paths, preload bridges and UI strings are still present — including
 that the renderer bundle keeps its exact filename. **Do not rename the asset
@@ -243,11 +261,11 @@ The old and new builds install to separate folders, so both can sit on the
 machine at once. Uninstall the old one from **Settings → Apps** when you are
 happy.
 
-> **If you ever do rename the data directory**, be aware there are *two* folders,
+> **If you ever do rename the data directory**, be aware there are _two_ folders,
 > not one. Electron's `safeStorage` master key lives in a `Local State` file
 > inside Electron's own userData folder (`%APPDATA%\<productName>`), separate
 > from the app data folder holding `api-keys-vault.json`. Copy only the first and
-> every API key reports *"Stored key could not be decrypted"* despite the vault
+> every API key reports _"Stored key could not be decrypted"_ despite the vault
 > copying perfectly. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---

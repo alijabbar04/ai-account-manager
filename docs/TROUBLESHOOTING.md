@@ -296,8 +296,8 @@ all three, and the download URL is HTTPS.
 Regenerate it properly:
 
 ```powershell
-$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.4.1.exe'
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.4.1.exe'
+$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.5.0.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.5.0.exe'
 ```
 
 Plain HTTP, a missing digest, or a hand-edited manifest will always be rejected.
@@ -316,6 +316,20 @@ with failures" and is handled as a partial success, not an error.
 ---
 
 ## Build and test problems
+
+### "Automation host is not built"
+
+From a source checkout, publish the self-contained helper before launching a
+packaged directory:
+
+```powershell
+npm run automation:publish
+```
+
+If `dotnet` is missing, install a .NET 8 SDK or newer. End-user installers do
+not need a separate .NET installation. For permission detection, hotkey,
+profile-lock, and diagnostics issues, see
+[AUTOMATION_AND_SESSIONS.md](AUTOMATION_AND_SESSIONS.md).
 
 ### `npm test` fails after I edited something in `app/`
 
