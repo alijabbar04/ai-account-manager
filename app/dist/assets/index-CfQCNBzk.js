@@ -12666,6 +12666,21 @@ function Hv({
         children: [
           i.jsx("div", {
             className: "sidebar-heading",
+            children: "Automation",
+          }),
+          i.jsx(Zt, {
+            active: f === "automation-sessions",
+            onClick: () => o("automation-sessions"),
+            icon: "⚡",
+            label: "Automation & Sessions",
+          }),
+        ],
+      }),
+      i.jsxs("div", {
+        className: "sidebar-section",
+        children: [
+          i.jsx("div", {
+            className: "sidebar-heading",
             children: "API Analytics",
           }),
           i.jsx(Zt, {
@@ -14442,8 +14457,7 @@ function UpdateSettingsDialog({ onClose: f, onToast: o }) {
             i.jsx("span", { children: "HTTPS update manifest URL" }),
             i.jsx("input", {
               value: x.manifestUrl,
-              placeholder:
-                "https://example.com/ai-account-manager/latest.json",
+              placeholder: "https://example.com/ai-account-manager/latest.json",
               onChange: (R) => E({ ...x, manifestUrl: R.target.value }),
             }),
           ],
@@ -16942,6 +16956,1507 @@ function dy(f) {
       return "";
   }
 }
+const AUTOMATION_PROVIDERS = [
+  {
+    id: "claudeDesktop",
+    title: "Claude Desktop / Cowork",
+    detail:
+      "Native Auto or Skip first, with a tightly scoped Claude package UIA fallback for residual cards.",
+    methods: [
+      ["native-auto-with-uia-fallback", "Native Auto + UIA fallback"],
+      ["native-skip", "Native Skip / no prompts"],
+      ["uia-fallback", "UIA fallback only"],
+      ["disabled", "Disabled"],
+    ],
+  },
+  {
+    id: "claudeChrome",
+    title: "Claude in Chrome",
+    detail:
+      "Requires Google-signed Chrome and Claude context in the same bounded side-panel subtree.",
+    methods: [
+      ["native-auto-with-uia-fallback", "Native Auto + UIA fallback"],
+      ["native-skip", "Native Skip / no prompts"],
+      ["dry-run", "Detection only"],
+      ["disabled", "Disabled"],
+    ],
+  },
+  {
+    id: "chatgptDesktop",
+    title: "ChatGPT desktop Chat / Work / Codex",
+    detail:
+      "Unified and legacy packages are identity-checked separately. UIA action waits for a real captured card.",
+    methods: [
+      ["native-auto-review-with-uia-fallback", "Auto-review + UIA fallback"],
+      ["uia-fallback", "UIA fallback only"],
+      ["dry-run", "Detection only"],
+      ["disabled", "Disabled"],
+    ],
+  },
+  {
+    id: "chatgptBrowser",
+    title: "ChatGPT in a browser",
+    detail:
+      "Disabled unless an exact trusted ChatGPT surface can be proven. Arbitrary web pages are never approved.",
+    methods: [
+      ["dry-run", "Detection only"],
+      ["disabled", "Disabled"],
+    ],
+  },
+];
+const SESSION_SURFACE_OPTIONS = [
+  ["claude-desktop", "Claude Desktop"],
+  ["claude-web", "Claude isolated web app"],
+  ["claude-code", "Claude Code"],
+  ["chatgpt-desktop", "ChatGPT desktop"],
+  ["chatgpt-web", "ChatGPT isolated web app"],
+  ["codex", "Codex CLI"],
+];
+function AutomationRiskDialog({ kind: f, onClose: o, onAccept: v }) {
+  const [d, x] = q.useState(!1),
+    [E, D] = q.useState(!1),
+    w = f === "live";
+  return i.jsx(Ns, {
+    onClose: o,
+    children: i.jsxs("div", {
+      className: "automation-risk-dialog",
+      children: [
+        i.jsx("div", { className: "risk-icon", children: "⚠" }),
+        i.jsx("h2", {
+          children: w
+            ? "Turn on live unattended approvals?"
+            : "Before unattended permissions are enabled",
+        }),
+        i.jsx("p", {
+          children:
+            "Unattended modes can let agents operate files, browser pages, desktop apps, and connected services while you are away. Vendor safety controls still apply, but no automation is risk-free.",
+        }),
+        i.jsx("div", {
+          className: "automation-safety-list",
+          children: i.jsxs("ul", {
+            children: [
+              i.jsx("li", {
+                children:
+                  "Windows UAC, credentials, security dialogs, purchases, financial actions, and unknown processes are never automated.",
+              }),
+              i.jsx("li", {
+                children:
+                  "The emergency hotkey Ctrl+Shift+Alt+P pauses invocation immediately.",
+              }),
+              i.jsx("li", {
+                children:
+                  "Start in Dry run to inspect detections before allowing invocation.",
+              }),
+            ],
+          }),
+        }),
+        i.jsxs("label", {
+          className: "check risk-check",
+          children: [
+            i.jsx("input", {
+              type: "checkbox",
+              checked: d,
+              onChange: (C) => x(C.target.checked),
+            }),
+            i.jsx("span", {
+              children:
+                "I understand the scope and will use unattended operation only on trusted tasks and accounts.",
+            }),
+          ],
+        }),
+        i.jsxs("div", {
+          className: "dialog-actions",
+          children: [
+            i.jsx("button", {
+              className: "btn",
+              onClick: o,
+              children: "Cancel",
+            }),
+            i.jsx("button", {
+              className: "btn btn-primary",
+              disabled: !d || E,
+              onClick: async () => {
+                D(!0);
+                try {
+                  await v();
+                } finally {
+                  D(!1);
+                }
+              },
+              children: E
+                ? "Saving…"
+                : w
+                  ? "Enable live approvals"
+                  : "Acknowledge & start dry run",
+            }),
+          ],
+        }),
+      ],
+    }),
+  });
+}
+function SessionProfileDialog({ profile: f, onClose: o, onSaved: v }) {
+  const [d, x] = q.useState(() => ({
+      id: f?.id,
+      name: f?.name ?? "",
+      accountLabel: f?.accountLabel ?? "",
+      surface: f?.surface ?? "claude-web",
+      startMode: f?.startMode ?? "chat",
+      unattendedMode: f?.unattendedMode ?? "manual",
+      linkedClaudeProfileId: f?.linkedClaudeProfileId ?? "",
+      color: f?.color ?? "#c96442",
+    })),
+    [E, D] = q.useState([]),
+    [w, C] = q.useState(null),
+    [g, B] = q.useState(!1);
+  q.useEffect(() => {
+    window.cam.listStates().then((Y) => D(Y.map((U) => U.profile)));
+  }, []);
+  const R = d.surface.startsWith("claude"),
+    _ = ["claude-code", "codex"].includes(d.surface);
+  return i.jsx(Ns, {
+    onClose: o,
+    children: i.jsxs("div", {
+      className: "session-profile-dialog",
+      children: [
+        i.jsx("h2", {
+          children: f ? "Edit session profile" : "Add session profile",
+        }),
+        i.jsx("p", {
+          className: "hint",
+          children:
+            "Profiles store labels and app-managed paths only. Passwords, cookies, and vendor tokens are never copied or stored by AI Account Manager.",
+        }),
+        i.jsxs("div", {
+          className: "automation-form-grid",
+          children: [
+            i.jsxs("label", {
+              className: "field",
+              children: [
+                i.jsx("span", { children: "Profile name" }),
+                i.jsx("input", {
+                  autoFocus: !0,
+                  value: d.name,
+                  placeholder: "e.g. GPT Work",
+                  onChange: (Y) => x({ ...d, name: Y.target.value }),
+                }),
+              ],
+            }),
+            i.jsxs("label", {
+              className: "field",
+              children: [
+                i.jsx("span", { children: "Account label (optional)" }),
+                i.jsx("input", {
+                  value: d.accountLabel,
+                  placeholder: "e.g. colleague authorised account",
+                  onChange: (Y) => x({ ...d, accountLabel: Y.target.value }),
+                }),
+              ],
+            }),
+            i.jsxs("label", {
+              className: "field automation-span-2",
+              children: [
+                i.jsx("span", { children: "Launch surface" }),
+                i.jsx("select", {
+                  className: "select",
+                  value: d.surface,
+                  onChange: (Y) => {
+                    const U = Y.target.value,
+                      H = U.startsWith("claude");
+                    x({
+                      ...d,
+                      surface: U,
+                      startMode:
+                        U === "claude-code"
+                          ? "code"
+                          : U === "codex"
+                            ? "codex"
+                            : "chat",
+                      color: H ? "#c96442" : "#2a78d6",
+                    });
+                  },
+                  children: SESSION_SURFACE_OPTIONS.map(([Y, U]) =>
+                    i.jsx("option", { value: Y, children: U }, Y),
+                  ),
+                }),
+              ],
+            }),
+            i.jsxs("label", {
+              className: "field",
+              children: [
+                i.jsx("span", { children: "Start mode" }),
+                i.jsx("select", {
+                  className: "select",
+                  value: d.startMode,
+                  onChange: (Y) => x({ ...d, startMode: Y.target.value }),
+                  children: (R
+                    ? [
+                        ["chat", "Chat"],
+                        ["cowork", "Cowork"],
+                        ["code", "Code"],
+                      ]
+                    : [
+                        ["chat", "Chat"],
+                        ["work", "Work"],
+                        ["codex", "Codex"],
+                      ]
+                  ).map(([Y, U]) =>
+                    i.jsx("option", { value: Y, children: U }, Y),
+                  ),
+                }),
+              ],
+            }),
+            i.jsxs("label", {
+              className: "field",
+              children: [
+                i.jsx("span", { children: "Permission start mode" }),
+                i.jsx("select", {
+                  className: "select",
+                  value: d.unattendedMode,
+                  onChange: (Y) => x({ ...d, unattendedMode: Y.target.value }),
+                  children: [
+                    i.jsx(
+                      "option",
+                      { value: "manual", children: "Manual" },
+                      "manual",
+                    ),
+                    i.jsx(
+                      "option",
+                      { value: "auto", children: "Auto / auto-review" },
+                      "auto",
+                    ),
+                    i.jsx(
+                      "option",
+                      { value: "skip", children: "Skip / no prompts" },
+                      "skip",
+                    ),
+                  ],
+                }),
+              ],
+            }),
+            d.surface === "claude-code" &&
+              i.jsxs("label", {
+                className: "field automation-span-2",
+                children: [
+                  i.jsx("span", { children: "Claude Code account" }),
+                  i.jsxs("select", {
+                    className: "select",
+                    value: d.linkedClaudeProfileId,
+                    onChange: (Y) =>
+                      x({ ...d, linkedClaudeProfileId: Y.target.value }),
+                    children: [
+                      i.jsx("option", {
+                        value: "",
+                        children: "Machine default (~/.claude)",
+                      }),
+                      ...E.map((Y) =>
+                        i.jsx(
+                          "option",
+                          { value: Y.id, children: Y.name },
+                          Y.id,
+                        ),
+                      ),
+                    ],
+                  }),
+                ],
+              }),
+          ],
+        }),
+        !_ &&
+          i.jsx("p", {
+            className: "hint",
+            children:
+              "Desktop apps may be single-instance and can focus an existing window. For a reliably separate account, choose an isolated web app profile.",
+          }),
+        ["claude-desktop", "chatgpt-desktop"].includes(d.surface) &&
+          i.jsx("div", {
+            className: "banner",
+            "data-kind": "warn",
+            children:
+              "Start mode is saved as intent only. No unverified desktop deep link or isolated user-data flag will be sent; launch opens or focuses the vendor app's default surface.",
+          }),
+        w &&
+          i.jsx("div", {
+            className: "banner",
+            "data-kind": "crit",
+            children: w,
+          }),
+        i.jsxs("div", {
+          className: "dialog-actions",
+          children: [
+            i.jsx("button", {
+              className: "btn",
+              onClick: o,
+              children: "Cancel",
+            }),
+            i.jsx("button", {
+              className: "btn btn-primary",
+              disabled: !d.name.trim() || g,
+              onClick: async () => {
+                B(!0);
+                C(null);
+                try {
+                  if (
+                    d.unattendedMode !== "manual" &&
+                    !window.confirm(
+                      "This profile will start with unattended permissions. The agent may operate files, apps, browser pages, and connected services without asking each time. Continue?",
+                    )
+                  )
+                    return;
+                  const Y = await window.cam.automation.sessions.save(d);
+                  if (!Y.ok)
+                    throw new Error(Y.error ?? "Could not save profile.");
+                  v(Y.profile);
+                } catch (Y) {
+                  C(Y.message);
+                } finally {
+                  B(!1);
+                }
+              },
+              children: g ? "Saving…" : "Save profile",
+            }),
+          ],
+        }),
+      ],
+    }),
+  });
+}
+function AutomationPermissionsView({ state: f, onPatch: o, showToast: v }) {
+  const [d, x] = q.useState(null),
+    [E, D] = q.useState(!1),
+    w = f.settings,
+    C = w.pausedUntil && w.pausedUntil > Date.now(),
+    g = async (B) => {
+      D(!0);
+      try {
+        const R = await window.cam.automation.diagnostics();
+        if (!R.ok) throw new Error(R.error ?? "Diagnostics failed.");
+        x(R.report);
+        v(
+          `Diagnostics found ${R.report.elements?.length ?? 0} redacted matching elements.`,
+        );
+      } catch (R) {
+        v(R.message);
+      } finally {
+        D(!1);
+      }
+    };
+  return i.jsxs("div", {
+    className: "automation-permissions",
+    children: [
+      i.jsxs("section", {
+        className: "automation-master panel",
+        children: [
+          i.jsxs("div", {
+            className: "automation-master-copy",
+            children: [
+              i.jsxs("div", {
+                className: "automation-title-line",
+                children: [
+                  i.jsx("h2", { children: "Unattended permissions" }),
+                  i.jsx("span", {
+                    className: "automation-state-badge",
+                    "data-state": String(f.status?.state ?? "Off")
+                      .toLowerCase()
+                      .replace(/\s+/g, "-"),
+                    children: f.status?.state ?? "Off",
+                  }),
+                ],
+              }),
+              i.jsx("p", {
+                children:
+                  "Prefer provider-native Auto or Skip modes, then handle only strictly recognized residual cards through Windows UI Automation.",
+              }),
+            ],
+          }),
+          i.jsxs("label", {
+            className: "master-switch",
+            children: [
+              i.jsx("input", {
+                type: "checkbox",
+                role: "switch",
+                checked: w.automationEnabled,
+                onChange: () => o("toggle-master"),
+                "aria-label": "Unattended permissions",
+              }),
+              i.jsx("span", { className: "switch-track" }),
+              i.jsx("b", { children: w.automationEnabled ? "ON" : "OFF" }),
+            ],
+          }),
+        ],
+      }),
+      i.jsxs("div", {
+        className: "automation-control-row",
+        children: [
+          i.jsxs("label", {
+            className: "check automation-control-card",
+            children: [
+              i.jsx("input", {
+                type: "checkbox",
+                checked: w.dryRun,
+                onChange: () => o("toggle-dry-run"),
+              }),
+              i.jsxs("span", {
+                children: [
+                  i.jsx("b", { children: "Dry run" }),
+                  i.jsx("small", { children: "Detect and log; never invoke" }),
+                ],
+              }),
+            ],
+          }),
+          i.jsxs("div", {
+            className: "automation-control-card pause-card",
+            children: [
+              i.jsx("b", {
+                children: C ? "Invocation paused" : "Pause monitoring",
+              }),
+              C
+                ? i.jsx("button", {
+                    className: "btn btn-small",
+                    onClick: async () => {
+                      const B = await window.cam.automation.resume();
+                      B.ok ? v("Unattended permissions resumed.") : v(B.error);
+                    },
+                    children: "Resume",
+                  })
+                : i.jsx("div", {
+                    className: "pause-buttons",
+                    children: [5, 15, 60].map((B) =>
+                      i.jsx(
+                        "button",
+                        {
+                          className: "btn btn-small",
+                          onClick: async () => {
+                            const R = await window.cam.automation.pause(B);
+                            R.ok ? v(`Paused for ${B} minutes.`) : v(R.error);
+                          },
+                          children: `${B}m`,
+                        },
+                        B,
+                      ),
+                    ),
+                  }),
+            ],
+          }),
+          i.jsxs("div", {
+            className: "automation-control-card hotkey-card",
+            children: [
+              i.jsx("b", { children: "Emergency stop" }),
+              i.jsx("kbd", { children: w.emergencyHotkey }),
+              i.jsx("small", {
+                children: "Pauses globally, even over a provider window",
+              }),
+            ],
+          }),
+        ],
+      }),
+      i.jsx("div", {
+        className: "automation-provider-grid",
+        children: AUTOMATION_PROVIDERS.map((B) => {
+          const R = w.providers[B.id];
+          return i.jsxs(
+            "section",
+            {
+              className: "card automation-provider-card",
+              children: [
+                i.jsxs("div", {
+                  className: "provider-card-head",
+                  children: [
+                    i.jsxs("div", {
+                      children: [
+                        i.jsx("h3", { children: B.title }),
+                        i.jsx("p", { children: B.detail }),
+                      ],
+                    }),
+                    i.jsx("label", {
+                      className: "mini-switch",
+                      children: i.jsx("input", {
+                        type: "checkbox",
+                        role: "switch",
+                        checked: R.enabled,
+                        onChange: (Y) =>
+                          o({
+                            providers: {
+                              [B.id]: { ...R, enabled: Y.target.checked },
+                            },
+                          }),
+                        "aria-label": `Enable ${B.title}`,
+                      }),
+                    }),
+                  ],
+                }),
+                i.jsxs("label", {
+                  className: "field",
+                  children: [
+                    i.jsx("span", { children: "Method" }),
+                    i.jsx("select", {
+                      className: "select",
+                      value: R.method,
+                      disabled: !R.enabled,
+                      onChange: (Y) =>
+                        o({
+                          providers: {
+                            [B.id]: { ...R, method: Y.target.value },
+                          },
+                        }),
+                      children: B.methods.map(([Y, U]) =>
+                        i.jsx("option", { value: Y, children: U }, Y),
+                      ),
+                    }),
+                  ],
+                }),
+                B.id === "claudeDesktop" &&
+                  i.jsxs("div", {
+                    className: "native-mode-actions",
+                    children: [
+                      i.jsx("span", {
+                        children: "Explicitly apply in open Claude:",
+                      }),
+                      ...[
+                        ["auto", "Auto"],
+                        ["skip", "Skip"],
+                        ["manual", "Manual"],
+                      ].map(([Y, U]) =>
+                        i.jsx(
+                          "button",
+                          {
+                            className: "btn btn-small",
+                            disabled:
+                              !R.enabled ||
+                              (Y !== "manual" &&
+                                (!w.automationEnabled ||
+                                  !w.firstRunAcknowledged ||
+                                  w.dryRun)),
+                            onClick: async () => {
+                              const H =
+                                await window.cam.automation.applyNativeMode(Y);
+                              v(
+                                H.message ??
+                                  H.error ??
+                                  "Native mode action completed.",
+                              );
+                            },
+                            children: U,
+                          },
+                          Y,
+                        ),
+                      ),
+                    ],
+                  }),
+                i.jsx("div", {
+                  className: "provider-boundary",
+                  children:
+                    B.id.includes("Browser") || B.id.includes("Chrome")
+                      ? "Browser action remains dry-run until the accessible provider surface is provably scoped."
+                      : "Package/signer + context + request + action + card relationship are all required.",
+                }),
+              ],
+            },
+            B.id,
+          );
+        }),
+      }),
+      i.jsxs("details", {
+        className: "panel automation-advanced",
+        children: [
+          i.jsx("summary", { children: "Advanced & lifecycle" }),
+          i.jsxs("div", {
+            className: "automation-form-grid",
+            children: [
+              i.jsxs("label", {
+                className: "check",
+                children: [
+                  i.jsx("input", {
+                    type: "checkbox",
+                    checked: w.runInBackground,
+                    onChange: (B) => o({ runInBackground: B.target.checked }),
+                  }),
+                  i.jsx("span", {
+                    children: "Keep monitoring after the window closes",
+                  }),
+                ],
+              }),
+              i.jsxs("label", {
+                className: "check",
+                children: [
+                  i.jsx("input", {
+                    type: "checkbox",
+                    checked: w.startWithWindows,
+                    onChange: (B) => o({ startWithWindows: B.target.checked }),
+                  }),
+                  i.jsx("span", {
+                    children: "Start with Windows (current user)",
+                  }),
+                ],
+              }),
+              i.jsxs("label", {
+                className: "field",
+                children: [
+                  i.jsx("span", { children: "Approval delay (ms)" }),
+                  i.jsx("input", {
+                    type: "number",
+                    min: 0,
+                    max: 5e3,
+                    value: w.approvalDelayMs,
+                    onChange: (B) =>
+                      o({ approvalDelayMs: Number(B.target.value) }),
+                  }),
+                ],
+              }),
+              i.jsxs("label", {
+                className: "field",
+                children: [
+                  i.jsx("span", { children: "Fallback poll interval (ms)" }),
+                  i.jsx("input", {
+                    type: "number",
+                    min: 1e3,
+                    max: 6e4,
+                    value: w.fallbackPollMs,
+                    onChange: (B) =>
+                      o({ fallbackPollMs: Number(B.target.value) }),
+                  }),
+                ],
+              }),
+              i.jsxs("label", {
+                className: "field",
+                children: [
+                  i.jsx("span", { children: "Log retention (days)" }),
+                  i.jsx("input", {
+                    type: "number",
+                    min: 1,
+                    max: 365,
+                    value: w.logRetentionDays,
+                    onChange: (B) =>
+                      o({ logRetentionDays: Number(B.target.value) }),
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+      i.jsxs("section", {
+        className: "panel automation-diagnostics",
+        children: [
+          i.jsxs("div", {
+            className: "section-head",
+            children: [
+              i.jsxs("div", {
+                children: [
+                  i.jsx("h2", { children: "Diagnostics & inspector" }),
+                  i.jsx("p", {
+                    className: "hint",
+                    children:
+                      "Only bounded, redacted provider-matching accessibility metadata is shown. Review it here before export.",
+                  }),
+                ],
+              }),
+              i.jsxs("div", {
+                className: "view-actions",
+                children: [
+                  i.jsx("button", {
+                    className: "btn",
+                    disabled: E,
+                    onClick: () => g(),
+                    children: E ? "Scanning…" : "Run diagnostics",
+                  }),
+                  i.jsx("button", {
+                    className: "btn",
+                    onClick: async () => {
+                      v(
+                        "Hover the provider card now; the app will return in three seconds.",
+                      );
+                      const B = await window.cam.automation.inspect();
+                      B.ok ? x(B.report) : v(B.error);
+                    },
+                    children: "Inspect under cursor",
+                  }),
+                  i.jsx("button", {
+                    className: "btn",
+                    disabled: !d,
+                    onClick: async () => {
+                      const B =
+                        await window.cam.automation.exportDiagnostics(d);
+                      B.ok
+                        ? v(`Exported redacted diagnostics to ${B.path}`)
+                        : B.error && v(B.error);
+                    },
+                    children: "Export reviewed copy",
+                  }),
+                ],
+              }),
+            ],
+          }),
+          d &&
+            i.jsxs(i.Fragment, {
+              children: [
+                i.jsxs("div", {
+                  className: "diagnostic-summary",
+                  children: [
+                    i.jsx("b", {
+                      children: `${d.elements?.length ?? 0} matching elements`,
+                    }),
+                    i.jsx("span", {
+                      children: `Selector revision ${d.selectorRevision}`,
+                    }),
+                  ],
+                }),
+                i.jsx("div", {
+                  className: "automation-table-wrap",
+                  children: i.jsxs("table", {
+                    className: "automation-table",
+                    children: [
+                      i.jsx("thead", {
+                        children: i.jsxs("tr", {
+                          children: [
+                            "PID / HWND",
+                            "Package",
+                            "Control",
+                            "Accessible name",
+                            "Decision",
+                          ].map((B) => i.jsx("th", { children: B }, B)),
+                        }),
+                      }),
+                      i.jsx("tbody", {
+                        children: (d.elements ?? []).slice(0, 80).map((B, R) =>
+                          i.jsxs(
+                            "tr",
+                            {
+                              children: [
+                                i.jsx("td", {
+                                  children: `${B.processId} / ${B.hwnd}`,
+                                }),
+                                i.jsx("td", {
+                                  children: B.packageFamily || "unpackaged",
+                                }),
+                                i.jsx("td", { children: B.controlType }),
+                                i.jsx("td", { children: B.name || "—" }),
+                                i.jsx("td", {
+                                  className: "decision-cell",
+                                  children: B.adapterDecision,
+                                }),
+                              ],
+                            },
+                            `${B.runtimeId}-${R}`,
+                          ),
+                        ),
+                      }),
+                    ],
+                  }),
+                }),
+              ],
+            }),
+        ],
+      }),
+    ],
+  });
+}
+function AutomationSessionLauncherView({ state: f, showToast: o }) {
+  const [v, d] = q.useState(null),
+    x = async (E) => {
+      const D = await window.cam.automation.sessions.quickLaunch(E);
+      o(D.message ?? D.error ?? "Launch completed.");
+    },
+    E = async (D) => {
+      const w = await window.cam.automation.sessions.launch(D.id);
+      o(w.message ?? w.error ?? "Launch completed.");
+    },
+    D = async (w) => {
+      const C = window.prompt(
+        `Paste the HTTPS login or magic link for “${w.name}”. It will be opened in that profile and will not be saved.`,
+      );
+      if (!C) return;
+      const g = await window.cam.automation.sessions.openLoginLink(w.id, C);
+      o(g.message ?? g.error ?? "Login link opened.");
+    },
+    w = async (C) => {
+      const g = window.confirm(
+        `Remove “${C.name}” from the launcher? Its browser sign-in data will be retained.`,
+      );
+      if (!g) return;
+      const B = window.confirm(
+        "Also permanently delete this app-managed browser profile data? Choose Cancel to retain logins for recovery.",
+      );
+      const R = await window.cam.automation.sessions.remove(C.id);
+      if (!R.ok) {
+        o(R.error);
+        return;
+      }
+      if (B) {
+        const _ = await window.cam.automation.sessions.cleanupData(C.id);
+        o(_.ok ? "Profile metadata and browser data removed." : _.error);
+      } else {
+        o("Profile removed; browser sign-in data was retained.");
+      }
+    };
+  return i.jsxs("div", {
+    className: "automation-launcher",
+    children: [
+      i.jsxs("section", {
+        className: "quick-launch-grid",
+        children: [
+          i.jsxs("button", {
+            className: "quick-launch claude-launch",
+            onClick: () => x("claude"),
+            children: [
+              i.jsx("span", { className: "quick-launch-icon", children: "C" }),
+              i.jsxs("span", {
+                children: [
+                  i.jsx("b", { children: "New Claude" }),
+                  i.jsx("small", {
+                    children: "Open or focus the installed Claude app",
+                  }),
+                ],
+              }),
+              i.jsx("span", { children: "→" }),
+            ],
+          }),
+          i.jsxs("button", {
+            className: "quick-launch gpt-launch",
+            onClick: () => x("chatgpt"),
+            children: [
+              i.jsx("span", {
+                className: "quick-launch-icon",
+                children: "GPT",
+              }),
+              i.jsxs("span", {
+                children: [
+                  i.jsx("b", { children: "New GPT" }),
+                  i.jsx("small", { children: "Open or focus ChatGPT / Codex" }),
+                ],
+              }),
+              i.jsx("span", { children: "→" }),
+            ],
+          }),
+        ],
+      }),
+      i.jsxs("div", {
+        className: "launcher-explainer panel",
+        children: [
+          i.jsx("b", { children: "Need a second signed-in account?" }),
+          i.jsx("span", {
+            children:
+              "Use an isolated web profile. It receives its own app-managed browser directory; sign in manually once and the browser retains that session without exposing credentials to this app.",
+          }),
+        ],
+      }),
+      i.jsxs("div", {
+        className: "section-head",
+        children: [
+          i.jsxs("div", {
+            children: [
+              i.jsx("h2", { children: "Saved profiles" }),
+              i.jsx("p", {
+                className: "hint",
+                children: `${f.profiles.length} persistent launch profile${f.profiles.length === 1 ? "" : "s"}`,
+              }),
+            ],
+          }),
+          i.jsx("button", {
+            className: "btn btn-primary",
+            onClick: () => d({}),
+            children: "+ Add profile",
+          }),
+        ],
+      }),
+      f.profiles.length === 0
+        ? i.jsxs("div", {
+            className: "empty automation-empty",
+            children: [
+              i.jsx("h2", { children: "No saved sessions yet" }),
+              i.jsx("p", {
+                children:
+                  "Create a Claude, GPT, Claude Code, or Codex launch profile. Isolated web profiles are the reliable route for separate authorised accounts.",
+              }),
+              i.jsx("button", {
+                className: "btn btn-primary",
+                onClick: () => d({}),
+                children: "+ Add your first profile",
+              }),
+            ],
+          })
+        : i.jsx("div", {
+            className: "session-profile-grid",
+            children: f.profiles.map((C) =>
+              i.jsxs(
+                "section",
+                {
+                  className: "card session-profile-card",
+                  style: { "--profile-color": C.color },
+                  children: [
+                    i.jsxs("div", {
+                      className: "session-card-head",
+                      children: [
+                        i.jsx("span", {
+                          className: "session-icon",
+                          children: C.icon,
+                        }),
+                        i.jsxs("div", {
+                          children: [
+                            i.jsx("h3", { children: C.name }),
+                            i.jsx("p", {
+                              children:
+                                C.accountLabel ||
+                                "Account chosen in vendor sign-in",
+                            }),
+                          ],
+                        }),
+                        i.jsx("span", {
+                          className: "running-dot",
+                          "data-running": C.running || void 0,
+                          title: C.running ? "Running" : "Not running",
+                        }),
+                      ],
+                    }),
+                    i.jsxs("div", {
+                      className: "session-meta",
+                      children: [
+                        i.jsx("span", {
+                          children: C.surface.replace(/-/g, " "),
+                        }),
+                        i.jsx("span", { children: C.startMode }),
+                        i.jsx("span", {
+                          children: `permissions: ${C.unattendedMode}`,
+                        }),
+                      ],
+                    }),
+                    C.profileDataDir &&
+                      i.jsxs("div", {
+                        className: "managed-path",
+                        children: [
+                          i.jsx("span", { children: "Managed profile" }),
+                          i.jsx("code", { children: C.profileDataDir }),
+                        ],
+                      }),
+                    i.jsx("div", {
+                      className: "session-last-launch",
+                      children: C.lastLaunch
+                        ? `Last launched ${new Date(C.lastLaunch).toLocaleString()}`
+                        : "Never launched",
+                    }),
+                    i.jsxs("div", {
+                      className: "session-card-actions",
+                      children: [
+                        i.jsx("button", {
+                          className: "btn btn-primary",
+                          onClick: () => E(C),
+                          disabled: C.running,
+                          children: C.running ? "Running" : "Launch",
+                        }),
+                        ["claude-web", "chatgpt-web"].includes(C.surface) &&
+                          i.jsx("button", {
+                            className: "btn",
+                            onClick: () => D(C),
+                            children: "Open login link",
+                          }),
+                        i.jsx("button", {
+                          className: "btn",
+                          onClick: () => d(C),
+                          children: "Edit",
+                        }),
+                        i.jsx("button", {
+                          className: "btn danger-text",
+                          onClick: () => w(C),
+                          children: "Remove",
+                        }),
+                      ],
+                    }),
+                  ],
+                },
+                C.id,
+              ),
+            ),
+          }),
+      i.jsxs("section", {
+        className: "panel auth-routing-note",
+        children: [
+          i.jsx("h2", { children: "Authentication routing" }),
+          i.jsxs("div", {
+            className: "auth-routing-grid",
+            children: [
+              i.jsxs("div", {
+                children: [
+                  i.jsx("b", { children: "HTTPS / magic links" }),
+                  i.jsx("p", {
+                    children:
+                      "Use Open login link on the intended isolated profile. A one-use local relay keeps the real link out of metadata and browser process arguments.",
+                  }),
+                ],
+              }),
+              i.jsxs("div", {
+                children: [
+                  i.jsx("b", { children: "Native app callbacks" }),
+                  i.jsx("p", {
+                    children:
+                      "Ambiguous multi-instance callbacks are unsupported. The app does not hijack URI handlers, proxy OAuth, or copy tokens.",
+                  }),
+                ],
+              }),
+              i.jsxs("div", {
+                children: [
+                  i.jsx("b", { children: "Cowork local access" }),
+                  i.jsx("p", {
+                    children:
+                      "Cloud Cowork can continue remotely; local files, browser, and computer use still require Claude Desktop to be open and connected.",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+      v &&
+        i.jsx(SessionProfileDialog, {
+          profile: v.id ? v : null,
+          onClose: () => d(null),
+          onSaved: (C) => {
+            d(null);
+            o(`Saved “${C.name}”.`);
+          },
+        }),
+    ],
+  });
+}
+function AutomationActivityView({ showToast: f }) {
+  const [o, v] = q.useState([]),
+    [d, x] = q.useState(!0),
+    [E, D] = q.useState(""),
+    [w, C] = q.useState("all"),
+    [g, B] = q.useState("all"),
+    R = q.useCallback(async () => {
+      x(!0);
+      try {
+        const H = await window.cam.automation.activity();
+        if (!H.ok)
+          throw new Error(H.error ?? "Could not load automation activity.");
+        v(H.records ?? []);
+      } catch (H) {
+        f(H.message);
+      } finally {
+        x(!1);
+      }
+    }, [f]);
+  q.useEffect(() => {
+    R();
+    const H = window.cam.automation.onActivityChanged(R);
+    return H;
+  }, [R]);
+  const _ = [...new Set(o.map((H) => H.provider).filter(Boolean))].sort(),
+    Y = [...new Set(o.map((H) => H.result).filter(Boolean))].sort(),
+    U = o.filter((H) => {
+      const N = E.trim().toLowerCase(),
+        K = [
+          H.provider,
+          H.surface,
+          H.label,
+          H.requestedAction,
+          H.method,
+          H.result,
+          H.errorCode,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+      return (
+        (w === "all" || H.provider === w) &&
+        (g === "all" || H.result === g) &&
+        (!N || K.includes(N))
+      );
+    });
+  return i.jsxs("div", {
+    className: "automation-activity",
+    children: [
+      i.jsxs("section", {
+        className: "panel activity-tools",
+        children: [
+          i.jsxs("div", {
+            children: [
+              i.jsx("h2", { children: "Redacted activity history" }),
+              i.jsx("p", {
+                className: "hint",
+                children:
+                  "Permission outcomes, launches, diagnostics, and errors are retained here. Prompts, page contents, typed values, links, cookies, and tokens are excluded.",
+              }),
+            ],
+          }),
+          i.jsxs("div", {
+            className: "view-actions",
+            children: [
+              i.jsx("button", {
+                className: "btn",
+                onClick: async () => {
+                  const H = await window.cam.automation.exportActivity();
+                  H.ok
+                    ? f(`Exported redacted activity to ${H.path}`)
+                    : H.error && f(H.error);
+                },
+                children: "Export",
+              }),
+              i.jsx("button", {
+                className: "btn danger-text",
+                disabled: o.length === 0,
+                onClick: async () => {
+                  if (
+                    !window.confirm(
+                      "Permanently clear the redacted automation activity history?",
+                    )
+                  )
+                    return;
+                  const H = await window.cam.automation.clearActivity();
+                  H.ok ? f("Automation activity cleared.") : f(H.error);
+                },
+                children: "Clear logs",
+              }),
+            ],
+          }),
+        ],
+      }),
+      i.jsxs("div", {
+        className: "activity-filters",
+        children: [
+          i.jsx("input", {
+            type: "search",
+            value: E,
+            placeholder: "Search provider, surface, action, or result",
+            "aria-label": "Search activity",
+            onChange: (H) => D(H.target.value),
+          }),
+          i.jsxs("select", {
+            className: "select",
+            value: w,
+            "aria-label": "Filter activity by provider",
+            onChange: (H) => C(H.target.value),
+            children: [
+              i.jsx("option", { value: "all", children: "All providers" }),
+              ..._.map((H) => i.jsx("option", { value: H, children: H }, H)),
+            ],
+          }),
+          i.jsxs("select", {
+            className: "select",
+            value: g,
+            "aria-label": "Filter activity by result",
+            onChange: (H) => B(H.target.value),
+            children: [
+              i.jsx("option", { value: "all", children: "All results" }),
+              ...Y.map((H) => i.jsx("option", { value: H, children: H }, H)),
+            ],
+          }),
+          i.jsx("span", {
+            className: "filter-count",
+            children: `${U.length} of ${o.length}`,
+          }),
+        ],
+      }),
+      d
+        ? i.jsx("div", {
+            className: "empty automation-empty",
+            children: "Loading redacted activity…",
+          })
+        : U.length === 0
+          ? i.jsxs("div", {
+              className: "empty automation-empty",
+              children: [
+                i.jsx("h2", {
+                  children: o.length
+                    ? "No matching activity"
+                    : "No automation activity yet",
+                }),
+                i.jsx("p", {
+                  children: o.length
+                    ? "Change the filters to see other events."
+                    : "Run diagnostics, launch a profile, or enable Dry run to create redacted records.",
+                }),
+              ],
+            })
+          : i.jsx("div", {
+              className: "automation-table-wrap panel activity-table-panel",
+              children: i.jsxs("table", {
+                className: "automation-table activity-table",
+                children: [
+                  i.jsx("thead", {
+                    children: i.jsxs("tr", {
+                      children: [
+                        "Time",
+                        "Provider / surface",
+                        "Action",
+                        "Method",
+                        "Result",
+                        "Duration",
+                      ].map((H) => i.jsx("th", { children: H }, H)),
+                    }),
+                  }),
+                  i.jsx("tbody", {
+                    children: U.map((H, N) =>
+                      i.jsxs(
+                        "tr",
+                        {
+                          children: [
+                            i.jsx("td", {
+                              children: new Date(H.timestamp).toLocaleString(),
+                            }),
+                            i.jsxs("td", {
+                              children: [
+                                i.jsx("b", {
+                                  children: H.provider || "unknown",
+                                }),
+                                i.jsx("small", { children: H.surface || "—" }),
+                              ],
+                            }),
+                            i.jsxs("td", {
+                              children: [
+                                i.jsx("span", {
+                                  children: H.requestedAction || "—",
+                                }),
+                                H.label &&
+                                  i.jsx("small", { children: H.label }),
+                              ],
+                            }),
+                            i.jsx("td", { children: H.method || "—" }),
+                            i.jsxs("td", {
+                              children: [
+                                i.jsx("span", {
+                                  className: "activity-result",
+                                  "data-result": H.result,
+                                  children: H.dryRun
+                                    ? `${H.result} · dry run`
+                                    : H.result,
+                                }),
+                                H.errorCode &&
+                                  i.jsx("small", { children: H.errorCode }),
+                              ],
+                            }),
+                            i.jsx("td", {
+                              children: `${H.durationMs ?? 0} ms`,
+                            }),
+                          ],
+                        },
+                        `${H.timestamp}-${H.provider}-${N}`,
+                      ),
+                    ),
+                  }),
+                ],
+              }),
+            }),
+    ],
+  });
+}
+function AutomationCapabilityMatrix({ capabilities: f }) {
+  return i.jsxs("details", {
+    className: "panel capability-matrix",
+    children: [
+      i.jsxs("summary", {
+        children: [
+          i.jsx("span", { children: "Provider capability matrix" }),
+          i.jsx("small", {
+            children:
+              "Verified, best effort, experimental, unsupported, and pending live test",
+          }),
+        ],
+      }),
+      i.jsx("div", {
+        className: "automation-table-wrap",
+        children: i.jsxs("table", {
+          className: "automation-table",
+          children: [
+            i.jsx("thead", {
+              children: i.jsxs("tr", {
+                children: ["Provider", "Capability", "Status", "Boundary"].map(
+                  (o) => i.jsx("th", { children: o }, o),
+                ),
+              }),
+            }),
+            i.jsx("tbody", {
+              children: (f ?? []).map((o, v) =>
+                i.jsxs(
+                  "tr",
+                  {
+                    children: [
+                      i.jsx("td", { children: o.provider }),
+                      i.jsx("td", { children: o.capability }),
+                      i.jsx("td", {
+                        children: i.jsx("span", {
+                          className: "capability-status",
+                          "data-status": String(o.status)
+                            .toLowerCase()
+                            .replace(/\s+/g, "-"),
+                          children: o.status,
+                        }),
+                      }),
+                      i.jsx("td", { children: o.detail }),
+                    ],
+                  },
+                  `${o.provider}-${o.capability}-${v}`,
+                ),
+              ),
+            }),
+          ],
+        }),
+      }),
+    ],
+  });
+}
+function AutomationSessionsView({ showToast: f }) {
+  const [o, v] = q.useState(null),
+    [d, x] = q.useState("permissions"),
+    [E, D] = q.useState(null),
+    [w, C] = q.useState(null),
+    g = q.useCallback(async () => {
+      try {
+        v(await window.cam.automation.getState());
+      } catch (N) {
+        C(N.message);
+      }
+    }, []);
+  q.useEffect(() => {
+    g();
+    const N = window.cam.automation.onChanged((K) => v(K));
+    return N;
+  }, [g]);
+  const B = async (N) => {
+      C(null);
+      try {
+        if (N === "toggle-master") {
+          if (
+            !o.settings.automationEnabled &&
+            !o.settings.firstRunAcknowledged
+          ) {
+            D("enable");
+            return;
+          }
+          N = { automationEnabled: !o.settings.automationEnabled };
+        } else if (N === "toggle-dry-run") {
+          if (o.settings.dryRun) {
+            D("live");
+            return;
+          }
+          N = { dryRun: !o.settings.dryRun };
+        }
+        const K = await window.cam.automation.setSettings(N);
+        if (!K.ok)
+          throw new Error(K.error ?? "Could not save automation settings.");
+        v({ ...o, settings: K.settings });
+      } catch (K) {
+        C(K.message);
+        f(K.message);
+      }
+    },
+    R = async () => {
+      const N =
+        E === "enable"
+          ? { firstRunAcknowledged: !0, automationEnabled: !0, dryRun: !0 }
+          : { firstRunAcknowledged: !0, automationEnabled: !0, dryRun: !1 };
+      const K = await window.cam.automation.setSettings(N);
+      if (!K.ok)
+        throw new Error(K.error ?? "Could not enable unattended permissions.");
+      v({ ...o, settings: K.settings });
+      D(null);
+      f(
+        E === "enable"
+          ? "Unattended permissions enabled in Dry run."
+          : "Live unattended approvals enabled.",
+      );
+    },
+    _ = [
+      ["permissions", "Permissions"],
+      ["launcher", "Session launcher"],
+      ["activity", "Activity"],
+    ],
+    Y = o?.status?.state ?? "Loading",
+    U = o?.status?.lastError ?? w;
+  return i.jsxs("div", {
+    className: "view automation-sessions-view",
+    children: [
+      i.jsxs("header", {
+        className: "view-header automation-view-header",
+        children: [
+          i.jsxs("div", {
+            children: [
+              i.jsxs("div", {
+                className: "automation-heading-line",
+                children: [
+                  i.jsx("h1", { children: "Automation & Sessions" }),
+                  i.jsx("span", {
+                    className: "automation-state-badge",
+                    "data-state": String(Y).toLowerCase().replace(/\s+/g, "-"),
+                    children: Y,
+                  }),
+                ],
+              }),
+              i.jsx("p", {
+                children:
+                  "Scoped unattended permissions, isolated account launch profiles, and privacy-preserving audit history.",
+              }),
+            ],
+          }),
+          o &&
+            i.jsx("span", {
+              className: "helper-health",
+              "data-running": o.status?.running || void 0,
+              children: o.status?.running
+                ? "Native helper connected"
+                : "Native helper starts on demand",
+            }),
+        ],
+      }),
+      U &&
+        i.jsx("div", {
+          className: "banner",
+          "data-kind": "crit",
+          role: "alert",
+          children: U,
+        }),
+      i.jsx("div", {
+        className: "segmented automation-tabs",
+        role: "tablist",
+        "aria-label": "Automation and session views",
+        children: _.map(([N, K]) =>
+          i.jsx(
+            "button",
+            {
+              role: "tab",
+              "aria-selected": d === N,
+              "data-active": d === N || void 0,
+              onClick: () => x(N),
+              children: K,
+            },
+            N,
+          ),
+        ),
+      }),
+      !o
+        ? i.jsx("div", {
+            className: "empty automation-empty",
+            children: "Loading automation state…",
+          })
+        : i.jsxs(i.Fragment, {
+            children: [
+              d === "permissions" &&
+                i.jsx(AutomationPermissionsView, {
+                  state: o,
+                  onPatch: B,
+                  showToast: f,
+                }),
+              d === "launcher" &&
+                i.jsx(AutomationSessionLauncherView, {
+                  state: o,
+                  showToast: f,
+                }),
+              d === "activity" &&
+                i.jsx(AutomationActivityView, { showToast: f }),
+              i.jsx(AutomationCapabilityMatrix, {
+                capabilities: o.capabilities,
+              }),
+            ],
+          }),
+      E &&
+        i.jsx(AutomationRiskDialog, {
+          kind: E,
+          onClose: () => D(null),
+          onAccept: R,
+        }),
+    ],
+  });
+}
 function ry(f) {
   return f.startsWith("provider:") ? f.slice(9) : null;
 }
@@ -17036,6 +18551,8 @@ function hy() {
             }),
           f === "accounts" && i.jsx(kv, { now: D, showToast: sl }),
           f === "skills-sync" && i.jsx(Jv, { showToast: sl }),
+          f === "automation-sessions" &&
+            i.jsx(AutomationSessionsView, { showToast: sl }),
           f === "api-dashboard" &&
             i.jsx($v, {
               keys: B,

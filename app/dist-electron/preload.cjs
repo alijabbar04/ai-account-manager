@@ -57,6 +57,61 @@ var api = {
     openDownload: () =>
       import_electron.ipcRenderer.invoke("updates:openDownload"),
   },
+  automation: {
+    getState: () => import_electron.ipcRenderer.invoke("automation:getState"),
+    setSettings: (patch) =>
+      import_electron.ipcRenderer.invoke("automation:setSettings", patch),
+    pause: (minutes) =>
+      import_electron.ipcRenderer.invoke("automation:pause", minutes),
+    resume: () => import_electron.ipcRenderer.invoke("automation:resume"),
+    diagnostics: () =>
+      import_electron.ipcRenderer.invoke("automation:diagnostics"),
+    inspect: () => import_electron.ipcRenderer.invoke("automation:inspect"),
+    applyNativeMode: (mode) =>
+      import_electron.ipcRenderer.invoke("automation:applyNativeMode", mode),
+    activity: () => import_electron.ipcRenderer.invoke("automation:activity"),
+    clearActivity: () =>
+      import_electron.ipcRenderer.invoke("automation:clearActivity"),
+    exportActivity: () =>
+      import_electron.ipcRenderer.invoke("automation:exportActivity"),
+    exportDiagnostics: (reviewedReport) =>
+      import_electron.ipcRenderer.invoke(
+        "automation:exportDiagnostics",
+        reviewedReport,
+      ),
+    onChanged: (cb) => {
+      const listener = (_e, state) => cb(state);
+      import_electron.ipcRenderer.on("automation:changed", listener);
+      return () =>
+        import_electron.ipcRenderer.removeListener(
+          "automation:changed",
+          listener,
+        );
+    },
+    onActivityChanged: (cb) => {
+      const listener = () => cb();
+      import_electron.ipcRenderer.on("automation:activity-changed", listener);
+      return () =>
+        import_electron.ipcRenderer.removeListener(
+          "automation:activity-changed",
+          listener,
+        );
+    },
+    sessions: {
+      discover: () => import_electron.ipcRenderer.invoke("sessions:discover"),
+      list: () => import_electron.ipcRenderer.invoke("sessions:list"),
+      save: (profile) =>
+        import_electron.ipcRenderer.invoke("sessions:save", profile),
+      remove: (id) => import_electron.ipcRenderer.invoke("sessions:remove", id),
+      cleanupData: (id) =>
+        import_electron.ipcRenderer.invoke("sessions:cleanupData", id),
+      quickLaunch: (provider) =>
+        import_electron.ipcRenderer.invoke("sessions:quickLaunch", provider),
+      launch: (id) => import_electron.ipcRenderer.invoke("sessions:launch", id),
+      openLoginLink: (id, url) =>
+        import_electron.ipcRenderer.invoke("sessions:openLoginLink", id, url),
+    },
+  },
   skills: {
     overview: () => import_electron.ipcRenderer.invoke("skills:overview"),
     install: (opts) =>

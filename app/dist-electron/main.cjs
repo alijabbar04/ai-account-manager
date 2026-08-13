@@ -33,6 +33,41 @@ var __toESM = (mod, isNodeMode, target) => (
 // electron/main.ts
 var import_electron5 = require("electron");
 var path12 = __toESM(require("node:path"));
+var {
+  AutomationHostClient,
+  SessionLauncher,
+  appendAudit,
+  capabilityMatrix,
+} = require("./automation-runtime.cjs");
+var {
+  redactText,
+  sanitizeAutomationSettings,
+} = require("./automation-domain.cjs");
+
+function sanitizeReviewedDiagnosticReport(input) {
+  if (!input || typeof input !== "object" || !Array.isArray(input.elements)) {
+    throw new Error("Run and review diagnostics before exporting.");
+  }
+  return {
+    capturedAt: Number(input.capturedAt) || Date.now(),
+    selectorRevision: redactText(input.selectorRevision, 40),
+    elements: input.elements.slice(0, 500).map((element) => ({
+      processId: Math.max(0, Math.trunc(Number(element?.processId) || 0)),
+      hwnd: redactText(element?.hwnd, 32),
+      packageFamily: redactText(element?.packageFamily, 120),
+      signer: redactText(element?.signer, 180),
+      signatureValid: element?.signatureValid === true,
+      controlType: redactText(element?.controlType, 60),
+      name: redactText(element?.name, 120),
+      automationId: redactText(element?.automationId, 100),
+      runtimeId: redactText(element?.runtimeId, 120),
+      adapterDecision: redactText(element?.adapterDecision, 320),
+    })),
+    notes: Array.isArray(input.notes)
+      ? input.notes.slice(0, 12).map((note) => redactText(note, 200))
+      : [],
+  };
+}
 
 // electron/lib/ipc.ts
 var import_electron4 = require("electron");
@@ -437,6 +472,59 @@ function openVSCode(profile) {
     windowsHide: true,
   }).unref();
   return { ok: true };
+}
+function openSafeCliTerminal(executable, args, title) {
+  if (!new Set(["claude", "codex"]).has(executable)) {
+    throw new Error("Unsupported session command.");
+  }
+  const resolved = findOnPath(executable);
+  if (!resolved) throw new Error(`${executable} was not found on PATH.`);
+  const allowedArguments = args.map((argument) => {
+    const value = String(argument);
+    if (value.length > 160 || /[\r\n\0]/.test(value)) {
+      throw new Error("Unsafe session argument.");
+    }
+    return psSingleQuote2(value);
+  });
+  const command = `& ${psSingleQuote2(resolved)} ${allowedArguments.join(" ")}`;
+  const encoded = encodePs(command);
+  const shell3 = shellExe();
+  const wt = wtPath();
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.NODE_OPTIONS;
+  const invocation = wt
+    ? {
+        exe: wt,
+        args: [
+          "new-tab",
+          "--title",
+          title,
+          shell3,
+          "-NoLogo",
+          "-NoExit",
+          "-EncodedCommand",
+          encoded,
+        ],
+        windowsVerbatimArguments: false,
+      }
+    : {
+        exe: "cmd.exe",
+        args: [
+          "/d",
+          "/s",
+          "/c",
+          `start "${title.replace(/"/g, "")}" ${shell3} -NoLogo -NoExit -EncodedCommand ${encoded}`,
+        ],
+        windowsVerbatimArguments: true,
+      };
+  (0, import_node_child_process2.spawn)(invocation.exe, invocation.args, {
+    env,
+    cwd: os4.homedir(),
+    detached: true,
+    stdio: "ignore",
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+  }).unref();
 }
 function claudeCliVersion() {
   return new Promise((resolve5) => {
@@ -2601,7 +2689,7 @@ function readGptUsage() {
         clientInfo: {
           name: "ai_account_manager",
           title: "AI Account Manager",
-          version: "1.4.1",
+          version: "1.5.0",
         },
       },
     });
@@ -2783,6 +2871,7 @@ function loadSettings() {
     alerts: { ...DEFAULT_ALERT_SETTINGS, ...(saved.alerts ?? {}) },
     alertState: saved.alertState ?? {},
     updates: { ...DEFAULT_UPDATE_SETTINGS, ...(saved.updates ?? {}) },
+    automation: sanitizeAutomationSettings(saved.automation),
   };
 }
 function saveSettings(patch) {
@@ -2823,9 +2912,43 @@ function isNewerVersion(candidate, current) {
   }
   return false;
 }
+function automationHelperExecutable() {
+  return import_electron4.app.isPackaged
+    ? path11.join(
+        process.resourcesPath,
+        "automation",
+        "AIAccountManager.Automation.exe",
+      )
+    : path11.resolve(
+        __dirname,
+        "..",
+        "..",
+        "automation",
+        "artifacts",
+        "win-x64",
+        "AIAccountManager.Automation.exe",
+      );
+}
 var Backend = class {
   constructor(getWindow) {
     this.getWindow = getWindow;
+    this.automationHost = new AutomationHostClient(
+      automationHelperExecutable(),
+    );
+    this.sessions = new SessionLauncher(appDataDir());
+    this.automationStatus = {
+      state: "Off",
+      running: false,
+      dryRun: true,
+      pausedUntil: null,
+    };
+    this.automationHost.on("status", (status) => {
+      this.automationStatus = { ...this.automationStatus, ...status };
+      void this.pushAutomationState();
+    });
+    this.automationHost.on("activity", () => {
+      this.getWindow()?.webContents.send("automation:activity-changed");
+    });
   }
   usage = new UsageService();
   api = new ApiService();
@@ -2834,6 +2957,8 @@ var Backend = class {
   gptUsage = null;
   updateState = { checking: false, checkedAt: null, update: null, error: null };
   guideWin = null;
+  registeredEmergencyHotkey = null;
+  automationAttention = null;
   async init() {
     this.defaultDir = await getDefaultConfigDir().catch(() => null);
     for (const profile of listProfiles()) {
@@ -2849,6 +2974,8 @@ var Backend = class {
     this.registerHandlers();
     this.registerApiKeyHandlers();
     this.registerSkillsHandlers();
+    this.registerAutomationHandlers();
+    await this.applyAutomationSettings(loadSettings().automation, false);
     setInterval(() => void this.refreshAll(), POLL_INTERVAL_MS);
     setInterval(() => void this.refreshApiKeys(), API_POLL_INTERVAL_MS);
     setInterval(() => void this.refreshGptUsage(), POLL_INTERVAL_MS);
@@ -2867,6 +2994,146 @@ var Backend = class {
       setTimeout(() => void this.checkForUpdates(), 1800);
     if (process.env.CAM_OPEN_GUIDE)
       setTimeout(() => this.openGuideWindow(), 600);
+  }
+  async applyAutomationSettings(settings, push = true) {
+    this.automationAttention = null;
+    import_electron4.app.setLoginItemSettings({
+      openAtLogin: settings.startWithWindows === true,
+      args: ["--background"],
+    });
+    if (this.registeredEmergencyHotkey) {
+      import_electron4.globalShortcut.unregister(
+        this.registeredEmergencyHotkey,
+      );
+      this.registeredEmergencyHotkey = null;
+    }
+    if (settings.automationEnabled) {
+      let hotkeyError = null;
+      const accelerator = String(settings.emergencyHotkey).replace(
+        /^Ctrl\+/i,
+        "CommandOrControl+",
+      );
+      if (
+        import_electron4.globalShortcut.register(accelerator, () => {
+          void this.emergencyPause();
+        })
+      ) {
+        this.registeredEmergencyHotkey = accelerator;
+      } else {
+        hotkeyError = `Emergency hotkey ${settings.emergencyHotkey} is already in use.`;
+        this.automationAttention = hotkeyError;
+      }
+      try {
+        this.automationStatus = await this.automationHost.configure(settings);
+        if (hotkeyError) {
+          this.automationStatus = {
+            ...this.automationStatus,
+            state: "Needs attention",
+            lastError: hotkeyError,
+          };
+        }
+      } catch (err) {
+        this.automationStatus = {
+          ...this.automationStatus,
+          state: "Error",
+          lastError: err.message,
+        };
+      }
+    } else if (this.automationHost.socket) {
+      try {
+        this.automationStatus = await this.automationHost.configure(settings);
+      } catch {}
+    } else {
+      this.automationStatus = {
+        state: "Off",
+        running: false,
+        dryRun: settings.dryRun,
+        pausedUntil: settings.pausedUntil,
+      };
+    }
+    syncTray();
+    if (push) await this.pushAutomationState();
+  }
+  async emergencyPause() {
+    const current = loadSettings().automation;
+    const next = sanitizeAutomationSettings({
+      ...current,
+      pausedUntil: Date.now() + 365 * 24 * 60 * 60 * 1e3,
+    });
+    saveSettings({ automation: next });
+    try {
+      this.automationStatus = await this.automationHost.configure(next);
+    } catch {}
+    this.showNotification(
+      "Unattended permissions paused",
+      "The emergency hotkey stopped all automated invocation. Resume explicitly in Automation & Sessions.",
+    );
+    await this.pushAutomationState();
+  }
+  async updateAutomationSettings(patch) {
+    const current = loadSettings().automation;
+    const merged = {
+      ...current,
+      ...(patch ?? {}),
+      providers: {
+        ...current.providers,
+        ...(patch?.providers ?? {}),
+      },
+    };
+    const next = sanitizeAutomationSettings(merged);
+    saveSettings({ automation: next });
+    await this.applyAutomationSettings(next);
+    return next;
+  }
+  async buildAutomationState() {
+    const settings = loadSettings().automation;
+    const discovery = await this.sessions.discover();
+    if (this.automationHost.socket) {
+      try {
+        this.automationStatus = await this.automationHost.request("status");
+      } catch {}
+    }
+    if (this.automationAttention) {
+      this.automationStatus = {
+        ...this.automationStatus,
+        state: "Needs attention",
+        lastError: this.automationAttention,
+      };
+    }
+    return {
+      settings,
+      status: this.automationStatus,
+      profiles: this.sessions.list(),
+      discovery,
+      capabilities: capabilityMatrix(discovery),
+    };
+  }
+  async pushAutomationState() {
+    const window = this.getWindow();
+    if (!window || window.isDestroyed()) return;
+    window.webContents.send(
+      "automation:changed",
+      await this.buildAutomationState(),
+    );
+  }
+  recordSessionActivity(profile, result, errorCode = "") {
+    const record = appendAudit(appDataDir(), {
+      timestamp: Date.now(),
+      durationMs: 0,
+      provider: profile.provider,
+      surface: profile.surface,
+      process: "session-launcher",
+      window: "",
+      label: profile.name,
+      requestedAction: "launch",
+      method: profile.surface,
+      result,
+      dryRun: false,
+      confidenceSignals: [],
+      retryCount: 0,
+      errorCode,
+    });
+    this.getWindow()?.webContents.send("automation:activity-changed", record);
   }
   // ---- Usage tracking guide (in-app PDF viewer) ----------------------
   guidePdfPath() {
@@ -3104,6 +3371,296 @@ var Backend = class {
       };
     }
     return this.updateState;
+  }
+  // ---- Automation & Sessions ---------------------------------------
+  registerAutomationHandlers() {
+    import_electron4.ipcMain.handle("automation:getState", () =>
+      this.buildAutomationState(),
+    );
+    import_electron4.ipcMain.handle(
+      "automation:setSettings",
+      async (_event, patch) => {
+        try {
+          const settings = await this.updateAutomationSettings(patch ?? {});
+          return { ok: true, settings };
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle(
+      "automation:pause",
+      async (_event, minutes) => {
+        const duration = [5, 15, 60].includes(Number(minutes))
+          ? Number(minutes)
+          : 5;
+        const settings = await this.updateAutomationSettings({
+          pausedUntil: Date.now() + duration * 60 * 1e3,
+        });
+        return { ok: true, settings };
+      },
+    );
+    import_electron4.ipcMain.handle("automation:resume", async () => {
+      const settings = await this.updateAutomationSettings({
+        pausedUntil: null,
+      });
+      return { ok: true, settings };
+    });
+    import_electron4.ipcMain.handle("automation:diagnostics", async () => {
+      try {
+        await this.automationHost.ensureStarted();
+        return {
+          ok: true,
+          report: await this.automationHost.request(
+            "diagnostics",
+            {},
+            { timeout: 45e3 },
+          ),
+        };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle("automation:inspect", async () => {
+      const window = this.getWindow();
+      try {
+        await this.automationHost.ensureStarted();
+        window?.hide();
+        const report = await this.automationHost.request(
+          "inspect",
+          { delayMs: 3e3 },
+          { timeout: 45e3 },
+        );
+        return { ok: true, report };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      } finally {
+        if (window && !window.isDestroyed()) {
+          window.show();
+          window.focus();
+        }
+      }
+    });
+    import_electron4.ipcMain.handle(
+      "automation:applyNativeMode",
+      async (_event, mode) => {
+        try {
+          if (!["manual", "auto", "skip"].includes(mode)) {
+            throw new Error("Unsupported native mode.");
+          }
+          const settings = loadSettings().automation;
+          if (
+            mode !== "manual" &&
+            (!settings.firstRunAcknowledged ||
+              !settings.automationEnabled ||
+              settings.dryRun)
+          ) {
+            throw new Error(
+              "Enable unattended permissions and turn off Dry run before applying Auto or Skip. Manual restore remains available.",
+            );
+          }
+          await this.automationHost.ensureStarted();
+          return await this.automationHost.request("native-mode", { mode });
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle("automation:activity", async () => {
+      try {
+        await this.automationHost.ensureStarted();
+        return {
+          ok: true,
+          records: await this.automationHost.request("activity:list", {
+            limit: 1e3,
+          }),
+        };
+      } catch (err) {
+        return { ok: false, error: err.message, records: [] };
+      }
+    });
+    import_electron4.ipcMain.handle("automation:clearActivity", async () => {
+      try {
+        await this.automationHost.ensureStarted();
+        await this.automationHost.request("activity:clear");
+        this.getWindow()?.webContents.send("automation:activity-changed");
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle("automation:exportActivity", async () => {
+      const window = this.getWindow();
+      if (!window) return { ok: false, error: "No window" };
+      try {
+        await this.automationHost.ensureStarted();
+        const records = await this.automationHost.request("activity:list", {
+          limit: 5e3,
+        });
+        const { canceled, filePath } =
+          await import_electron4.dialog.showSaveDialog(window, {
+            title: "Export redacted automation activity",
+            defaultPath: "automation-activity-redacted.json",
+            filters: [{ name: "JSON", extensions: ["json"] }],
+          });
+        if (canceled || !filePath) return { ok: false };
+        writeJsonAtomic(filePath, records);
+        return { ok: true, path: filePath };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle(
+      "automation:exportDiagnostics",
+      async (_event, reviewedReport) => {
+        const window = this.getWindow();
+        if (!window) return { ok: false, error: "No window" };
+        try {
+          const report = sanitizeReviewedDiagnosticReport(reviewedReport);
+          const { canceled, filePath } =
+            await import_electron4.dialog.showSaveDialog(window, {
+              title: "Export reviewed redacted diagnostics",
+              defaultPath: "automation-diagnostics-redacted.json",
+              filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+          if (canceled || !filePath) return { ok: false };
+          writeJsonAtomic(filePath, report);
+          return { ok: true, path: filePath };
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle("sessions:discover", () =>
+      this.sessions.discover(),
+    );
+    import_electron4.ipcMain.handle("sessions:list", () =>
+      this.sessions.list(),
+    );
+    import_electron4.ipcMain.handle("sessions:save", async (_event, input) => {
+      try {
+        const profile = this.sessions.save(input ?? {});
+        await this.pushAutomationState();
+        return { ok: true, profile };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle("sessions:remove", async (_event, id) => {
+      try {
+        const result = this.sessions.remove(id);
+        await this.pushAutomationState();
+        return result;
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle(
+      "sessions:cleanupData",
+      async (_event, id) => {
+        try {
+          const result = this.sessions.cleanupProfileData(id);
+          await this.pushAutomationState();
+          return result;
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle(
+      "sessions:quickLaunch",
+      async (_event, provider) => {
+        try {
+          if (!["claude", "chatgpt"].includes(provider)) {
+            throw new Error("Unsupported provider.");
+          }
+          const result = await this.sessions.quickLaunch(provider);
+          this.recordSessionActivity(
+            {
+              provider,
+              surface: `${provider}-desktop`,
+              name: provider === "claude" ? "New Claude" : "New GPT",
+            },
+            result.ok ? "success" : "failed",
+            result.ok ? "" : "native-launch-unavailable",
+          );
+          return result;
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle("sessions:launch", async (_event, id) => {
+      let profile;
+      try {
+        profile = this.sessions.list().find((item) => item.id === id);
+        if (!profile) throw new Error("Session profile not found.");
+        let result;
+        if (["claude-web", "chatgpt-web"].includes(profile.surface)) {
+          result = await this.sessions.launchBrowserProfile(id);
+        } else if (
+          ["claude-desktop", "chatgpt-desktop"].includes(profile.surface)
+        ) {
+          result = await this.sessions.quickLaunch(profile.provider);
+        } else {
+          const command = this.sessions.cliCommand(id);
+          if (profile.surface === "claude-code") {
+            const linked = profile.linkedClaudeProfileId
+              ? getProfile(profile.linkedClaudeProfileId)
+              : null;
+            if (profile.linkedClaudeProfileId && !linked) {
+              throw new Error("The linked Claude account no longer exists.");
+            }
+            const account = linked ?? {
+              id: "machine-default",
+              name: profile.name,
+              configDir: path11.join(os4.homedir(), ".claude"),
+            };
+            const safeArgs = command.args
+              .map((argument) => psSingleQuote2(String(argument)))
+              .join(" ");
+            openTerminal(account, `claude ${safeArgs}`);
+          } else {
+            openSafeCliTerminal(command.executable, command.args, profile.name);
+          }
+          result = { ok: true, message: `Launched ${profile.name}.` };
+        }
+        this.recordSessionActivity(profile, "success");
+        await this.pushAutomationState();
+        return result;
+      } catch (err) {
+        if (profile)
+          this.recordSessionActivity(profile, "failed", "launch-failed");
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle(
+      "sessions:openLoginLink",
+      async (_event, id, loginUrl) => {
+        let profile;
+        try {
+          profile = this.sessions.list().find((item) => item.id === id);
+          if (!profile) throw new Error("Session profile not found.");
+          const result = await this.sessions.launchBrowserProfile(id, loginUrl);
+          this.recordSessionActivity(profile, "success");
+          await this.pushAutomationState();
+          return result;
+        } catch (err) {
+          if (profile)
+            this.recordSessionActivity(profile, "failed", "login-link-failed");
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+  }
+  async shutdown() {
+    if (this.registeredEmergencyHotkey) {
+      import_electron4.globalShortcut.unregister(
+        this.registeredEmergencyHotkey,
+      );
+      this.registeredEmergencyHotkey = null;
+    }
+    await this.automationHost.shutdown();
   }
   // ---- Skills Sync (AI Environment Manager engine bridge) -------------
   registerSkillsHandlers() {
@@ -3416,14 +3973,15 @@ var Backend = class {
 
 // electron/main.ts
 var win = null;
+var backend = null;
+var tray = null;
+var isQuitting = false;
+var startInBackground = process.argv.includes("--background");
 if (!import_electron5.app.requestSingleInstanceLock()) {
   import_electron5.app.quit();
 } else {
   import_electron5.app.on("second-instance", () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+    showMainWindow();
   });
 }
 function createWindow() {
@@ -3446,7 +4004,23 @@ function createWindow() {
       webSecurity: true,
     },
   });
-  win.once("ready-to-show", () => win?.show());
+  win.once("ready-to-show", () => {
+    const automation = loadSettings().automation;
+    if (!startInBackground || !automation.automationEnabled) win?.show();
+    startInBackground = false;
+  });
+  win.on("close", (event) => {
+    const automation = loadSettings().automation;
+    if (
+      !isQuitting &&
+      automation.automationEnabled &&
+      automation.runInBackground
+    ) {
+      event.preventDefault();
+      win?.hide();
+      syncTray();
+    }
+  });
   win.on("closed", () => (win = null));
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://"))
@@ -3461,16 +4035,81 @@ function createWindow() {
     void win.loadFile(path12.join(__dirname, "..", "dist", "index.html"));
   }
 }
+function showMainWindow() {
+  if (!win || win.isDestroyed()) createWindow();
+  if (win?.isMinimized()) win.restore();
+  win?.show();
+  win?.focus();
+}
+function syncTray() {
+  if (!import_electron5.app.isReady()) return;
+  const automation = loadSettings().automation;
+  const needed = automation.automationEnabled && automation.runInBackground;
+  if (!needed) {
+    tray?.destroy();
+    tray = null;
+    return;
+  }
+  if (!tray) {
+    const iconPath = import_electron5.app.isPackaged
+      ? path12.join(process.resourcesPath, "icon.ico")
+      : path12.resolve(__dirname, "..", "..", "build", "icon.ico");
+    tray = new import_electron5.Tray(
+      import_electron5.nativeImage.createFromPath(iconPath),
+    );
+    tray.setToolTip("AI Account Manager — automation monitoring");
+    tray.on("double-click", showMainWindow);
+  }
+  const paused = Boolean(
+    automation.pausedUntil && automation.pausedUntil > Date.now(),
+  );
+  tray.setContextMenu(
+    import_electron5.Menu.buildFromTemplate([
+      { label: "Open AI Account Manager", click: showMainWindow },
+      { type: "separator" },
+      paused
+        ? {
+            label: "Resume unattended permissions",
+            click: () =>
+              void backend?.updateAutomationSettings({ pausedUntil: null }),
+          }
+        : {
+            label: "Emergency pause",
+            click: () => void backend?.emergencyPause(),
+          },
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => {
+          isQuitting = true;
+          import_electron5.app.quit();
+        },
+      },
+    ]),
+  );
+}
 void import_electron5.app.whenReady().then(async () => {
-  const backend = new Backend(() => win);
+  backend = new Backend(() => win);
   await backend.init();
   createWindow();
+  syncTray();
   import_electron5.app.on("activate", () => {
-    if (import_electron5.BrowserWindow.getAllWindows().length === 0)
-      createWindow();
+    showMainWindow();
   });
 });
 import_electron5.app.on("window-all-closed", () => {
   stopAll();
-  import_electron5.app.quit();
+  const automation = loadSettings().automation;
+  if (
+    isQuitting ||
+    !automation.automationEnabled ||
+    !automation.runInBackground
+  ) {
+    import_electron5.app.quit();
+  }
+});
+import_electron5.app.on("before-quit", () => {
+  isQuitting = true;
+  import_electron5.globalShortcut.unregisterAll();
+  void backend?.shutdown();
 });
