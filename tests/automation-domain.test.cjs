@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const {
   AUTOMATION_SCHEMA_VERSION,
+  SELECTOR_REVISION,
   buildBrowserLaunchCommand,
   buildCliArguments,
   isPathInside,
@@ -27,6 +28,27 @@ test("automation settings migrate fail-closed until risk acknowledgement", () =>
   assert.equal(settings.approvalDelayMs, 0);
   assert.equal(settings.fallbackPollMs, 1_000);
   assert.equal(settings.logRetentionDays, 365);
+  assert.equal(settings.selectorRevision, SELECTOR_REVISION);
+});
+
+test("unvalidated provider methods migrate to detection only", () => {
+  const settings = sanitizeAutomationSettings({
+    firstRunAcknowledged: true,
+    providers: {
+      claudeDesktop: {
+        enabled: true,
+        method: "native-auto-with-uia-fallback",
+      },
+      chatgptDesktop: {
+        enabled: true,
+        method: "native-auto-review-with-uia-fallback",
+      },
+    },
+    selectorRevision: "2026-08-v1",
+  });
+  assert.equal(settings.providers.claudeDesktop.method, "dry-run");
+  assert.equal(settings.providers.chatgptDesktop.method, "dry-run");
+  assert.equal(settings.selectorRevision, "2026-08-v3");
 });
 
 test("settings container migration preserves unrelated settings", () => {

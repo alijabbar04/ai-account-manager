@@ -1,18 +1,20 @@
 {
   "schemaVersion": 1,
-  "revision": "2026-08-v1",
+  "revision": "2026-08-v3",
   "providers": [
     {
       "id": "claudeDesktop",
       "surface": "desktop",
       "contextNames": ["Claude", "Cowork", "Claude Code"],
       "promptNames": [
+        "Claude wants to use",
         "Claude wants to use computer",
-        "Claude wants to use javascript_tool"
+        "Claude wants to use javascript_tool",
+        "Claude wants to use App from Windows-MCP"
       ],
       "allowNames": ["Allow once", "Allow this action"],
       "liveEligible": false,
-      "status": "needs-live-test"
+      "status": "live-sample-captured"
     },
     {
       "id": "claudeChrome",

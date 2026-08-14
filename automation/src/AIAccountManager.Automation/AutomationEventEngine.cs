@@ -96,6 +96,11 @@ public sealed class AutomationEventEngine : IDisposable
                 ? "Paused"
                 : settings.DryRun
                     ? "Dry run"
+                    : !_catalog.Providers.Any(selector =>
+                        selector.LiveEligible &&
+                        settings.Providers.TryGetValue(selector.Id, out var provider) &&
+                        provider.UsesUia)
+                        ? "Validation required"
                     : _lastError is not null
                         ? "Needs attention"
                         : "Monitoring";
@@ -123,32 +128,37 @@ public sealed class AutomationEventEngine : IDisposable
         var elements = ImmutableArray.CreateBuilder<DiagnosticElement>();
         foreach (var hwnd in WindowsNative.TopLevelWindows())
         {
-            var surface = UiaSnapshotCapture.CaptureWindow(hwnd, 5, 100);
-            if (surface is null) continue;
-            var decisions = _catalog.Providers.Select(selector => _recognizer.Evaluate(surface, selector)).ToArray();
-            var candidateSelectors = decisions
-                .Where(decision =>
-                    decision.Signals.Any(signal => signal.Name == "trusted process/package identity" && signal.Passed) &&
-                    decision.Signals.Any(signal => signal.Name == "provider window or side-panel context" && signal.Passed))
-                .Select(decision => _catalog.Providers.First(selector => selector.Id == decision.Provider))
+            WindowsNative.GetWindowThreadProcessId(hwnd, out var rawProcessId);
+            if (rawProcessId == 0) continue;
+            var identity = WindowsNative.CaptureIdentity((int)rawProcessId);
+            var candidateSelectors = _catalog.Providers
+                .Where(selector =>
+                    !selector.PromptNames.IsDefaultOrEmpty &&
+                    !selector.AllowNames.IsDefaultOrEmpty &&
+                    IdentityPolicy.Evaluate(identity, selector.Id) is { Trusted: true, SafeDesktop: true })
                 .ToArray();
-            var relevant = candidateSelectors.Length > 0;
-            if (!includeUnknown && !relevant) continue;
-            foreach (var node in RecognitionEngine.Traverse(surface.Root, 100))
+            if (candidateSelectors.Length == 0 && !includeUnknown) continue;
+            foreach (var selector in candidateSelectors)
             {
-                if (string.IsNullOrWhiteSpace(node.Name) && string.IsNullOrWhiteSpace(node.AutomationId)) continue;
-                if (!includeUnknown && !DiagnosticNameMatches(node.Name, candidateSelectors)) continue;
-                elements.Add(new DiagnosticElement(
-                    surface.Identity.ProcessId,
-                    $"0x{surface.Hwnd:X}",
-                    surface.Identity.PackageFamilyName,
-                    surface.Identity.Publisher,
-                    surface.Identity.SignatureValid,
-                    node.ControlType,
-                    Redactor.Text(node.Name, 120),
-                    Redactor.Text(node.AutomationId, 100),
-                    node.RuntimeId,
-                    string.Join("; ", decisions.Select(decision => $"{decision.Provider}: {decision.Reason}"))));
+                var surface = UiaSnapshotCapture.CaptureWindowCandidates(hwnd, selector, identity);
+                if (surface is null) continue;
+                var decision = _recognizer.Evaluate(surface, selector);
+                foreach (var node in RecognitionEngine.Traverse(surface.Root, 100))
+                {
+                    if (string.IsNullOrWhiteSpace(node.Name) && string.IsNullOrWhiteSpace(node.AutomationId)) continue;
+                    if (!DiagnosticNameMatches(node.Name, [selector])) continue;
+                    elements.Add(new DiagnosticElement(
+                        surface.Identity.ProcessId,
+                        $"0x{surface.Hwnd:X}",
+                        surface.Identity.PackageFamilyName,
+                        surface.Identity.Publisher,
+                        surface.Identity.SignatureValid,
+                        node.ControlType,
+                        Redactor.Text(node.Name, 120),
+                        Redactor.Text(node.AutomationId, 100),
+                        node.RuntimeId,
+                        $"{decision.Provider}: {decision.Reason}"));
+                }
             }
         }
         return new DiagnosticReport(
@@ -183,10 +193,10 @@ public sealed class AutomationEventEngine : IDisposable
         if (!WindowsNative.GetCursorPos(out var point))
             throw new InvalidOperationException("Could not read the cursor location.");
         var hwnd = WindowsNative.WindowFromPoint(point);
-        var surface = UiaSnapshotCapture.CaptureWindow(hwnd, 7, 240)
+        var surface = UiaSnapshotCapture.CaptureWindow(hwnd, 14, 1_400)
             ?? throw new InvalidOperationException("No accessible window was found under the cursor.");
         var decisions = _catalog.Providers.Select(selector => _recognizer.Evaluate(surface, selector)).ToArray();
-        var elements = RecognitionEngine.Traverse(surface.Root, 240)
+        var elements = RecognitionEngine.Traverse(surface.Root, 1_400)
             .Select(node => new DiagnosticElement(
                 surface.Identity.ProcessId,
                 $"0x{surface.Hwnd:X}",
@@ -231,7 +241,8 @@ public sealed class AutomationEventEngine : IDisposable
                     var element = root.FindFirst(TreeScope.Subtree, condition);
                     if (element is null) continue;
                     var runtimeId = UiaSnapshotCapture.RuntimeId(element);
-                    if (UiaSnapshotCapture.InvokeValidatedButton(hwnd, runtimeId, out var method))
+                    if (UiaSnapshotCapture.InvokeValidatedButton(
+                            hwnd, surface.Identity.ProcessId, runtimeId, [targetName], out var method))
                     {
                         Record(surface, new RecognitionDecision(true, selector.Id,
                             "Explicit native mode action", 100, runtimeId, runtimeId,
@@ -453,25 +464,44 @@ public sealed class AutomationEventEngine : IDisposable
             if (!enabledSelectors.Any(selector =>
                     IdentityPolicy.Evaluate(identity, selector.Id) is { Trusted: true, SafeDesktop: true })) return;
             Interlocked.Increment(ref _scans);
-            var surface = UiaSnapshotCapture.CaptureWindow(hwnd, 8, 260, identity);
-            if (surface is null) return;
             foreach (var selector in enabledSelectors)
             {
                 if (!settings.Providers.TryGetValue(selector.Id, out var provider) ||
                     !provider.UsesUia) continue;
-                var decision = _recognizer.Evaluate(surface, selector);
-                if (!decision.IsMatch) continue;
-                Interlocked.Increment(ref _matches);
-                var fingerprint = DedupeCache.Fingerprint(surface, decision);
-                if (!_dedupe.TryAdd(fingerprint, DateTimeOffset.UtcNow)) continue;
-                var forcedDryRun = settings.DryRun || provider.Method == "dry-run" || !decision.LiveEligible;
-                if (forcedDryRun)
+                if (IdentityPolicy.Evaluate(identity, selector.Id) is not { Trusted: true, SafeDesktop: true })
+                    continue;
+                var dedupeScope = string.Join('|', selector.Id, identity.ProcessId, hwnd);
+                var surface = UiaSnapshotCapture.CaptureWindowCandidates(hwnd, selector, identity);
+                if (surface is null)
                 {
-                    Record(surface, decision, "approve", "uia-event", "detected", true, 0,
-                        decision.LiveEligible ? string.Empty : "selector-not-live-verified", 0);
+                    _dedupe.ClearActive(dedupeScope);
                     continue;
                 }
-                Approve(surface, selector, decision, settings.ApprovalDelayMs);
+                var decisions = _recognizer.EvaluateMatches(surface, selector);
+                if (decisions.Count == 0)
+                {
+                    _dedupe.ClearActive(dedupeScope);
+                    continue;
+                }
+                Interlocked.Add(ref _matches, decisions.Count);
+                var candidates = decisions
+                    .Select(decision => (Decision: decision, Fingerprint: DedupeCache.Fingerprint(surface, decision)))
+                    .ToArray();
+                var newlyActive = _dedupe.ReconcileActive(
+                    dedupeScope,
+                    candidates.Select(candidate => candidate.Fingerprint));
+                foreach (var candidate in candidates.Where(item => newlyActive.Contains(item.Fingerprint)))
+                {
+                    var decision = candidate.Decision;
+                    var forcedDryRun = settings.DryRun || provider.Method == "dry-run" || !decision.LiveEligible;
+                    if (forcedDryRun)
+                    {
+                        Record(surface, decision, "approve", "uia-event", "detected", true, 0,
+                            decision.LiveEligible ? string.Empty : "selector-not-live-verified", 0);
+                        continue;
+                    }
+                    Approve(surface, selector, decision, settings.ApprovalDelayMs);
+                }
             }
         }
         catch (Exception error)
@@ -520,56 +550,50 @@ public sealed class AutomationEventEngine : IDisposable
                 "automation-state-changed", started.ElapsedMilliseconds);
             return;
         }
-        var refreshed = UiaSnapshotCapture.CaptureWindow(new IntPtr(original.Hwnd));
+        var refreshed = UiaSnapshotCapture.CaptureWindowCandidates(
+            new IntPtr(original.Hwnd), selector, original.Identity);
         if (refreshed is null)
         {
             Record(original, originalDecision, "approve", "uia-event", "disappeared", false, 0,
                 "candidate-disappeared", started.ElapsedMilliseconds);
             return;
         }
-        var revalidated = _recognizer.Evaluate(refreshed, selector);
-        if (!revalidated.IsMatch || revalidated.ButtonRuntimeId != originalDecision.ButtonRuntimeId)
+        var revalidated = _recognizer.EvaluateMatches(refreshed, selector)
+            .FirstOrDefault(decision => decision.ButtonRuntimeId == originalDecision.ButtonRuntimeId);
+        if (revalidated is null)
         {
-            Record(refreshed, revalidated, "approve", "uia-event", "revalidation-failed", false, 0,
+            Record(refreshed, originalDecision, "approve", "uia-event", "revalidation-failed", false, 0,
                 "candidate-changed", started.ElapsedMilliseconds);
             return;
         }
         var invoked = false;
         var confirmed = false;
-        var retryCount = 0;
         var method = string.Empty;
-        for (var attempt = 0; attempt < 2; attempt++)
+        current = CurrentSettings();
+        if (!current.AutomationEnabled || current.IsPaused || current.DryRun)
         {
-            current = CurrentSettings();
-            if (!current.AutomationEnabled || current.IsPaused || current.DryRun)
-            {
-                Record(refreshed, revalidated, "approve", "uia-event", "cancelled-before-invoke", true,
-                    retryCount, "automation-state-changed", started.ElapsedMilliseconds);
-                return;
-            }
-            invoked = UiaSnapshotCapture.InvokeValidatedButton(
-                new IntPtr(refreshed.Hwnd), revalidated.ButtonRuntimeId, out method);
-            if (!invoked) break;
+            Record(refreshed, revalidated, "approve", "uia-event", "cancelled-before-invoke", true,
+                0, "automation-state-changed", started.ElapsedMilliseconds);
+            return;
+        }
+        invoked = UiaSnapshotCapture.InvokeValidatedButton(
+            new IntPtr(refreshed.Hwnd), refreshed.Identity.ProcessId,
+            revalidated.ButtonRuntimeId, selector.AllowNames, out method);
+        if (invoked)
+        {
             Interlocked.Increment(ref _invocations);
             Thread.Sleep(200);
-            var confirmation = UiaSnapshotCapture.CaptureWindow(new IntPtr(refreshed.Hwnd));
+            var confirmation = UiaSnapshotCapture.CaptureWindowCandidates(
+                new IntPtr(refreshed.Hwnd), selector, refreshed.Identity);
             if (confirmation is null)
             {
                 confirmed = true;
-                break;
             }
-            var confirmationDecision = _recognizer.Evaluate(confirmation, selector);
-            if (!confirmationDecision.IsMatch ||
-                confirmationDecision.ButtonRuntimeId != revalidated.ButtonRuntimeId)
+            else
             {
-                confirmed = true;
-                break;
-            }
-            if (attempt == 0)
-            {
-                retryCount = 1;
-                refreshed = confirmation;
-                revalidated = confirmationDecision;
+                var confirmationDecision = _recognizer.EvaluateMatches(confirmation, selector)
+                    .FirstOrDefault(decision => decision.ButtonRuntimeId == revalidated.ButtonRuntimeId);
+                confirmed = confirmationDecision is null;
             }
         }
         var result = !invoked
@@ -581,9 +605,9 @@ public sealed class AutomationEventEngine : IDisposable
             ? "no-supported-action-pattern"
             : confirmed
                 ? string.Empty
-                : "card-still-present-after-retry";
+                : "card-still-present-after-invoke";
         Record(refreshed, revalidated, "approve", method.Length > 0 ? method : "uia-invoke",
-            result, false, retryCount, errorCode, started.ElapsedMilliseconds);
+            result, false, 0, errorCode, started.ElapsedMilliseconds);
     }
 
     private void Record(

@@ -9,7 +9,9 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  AutomationHostClient,
   SessionLauncher,
+  capabilityMatrix,
 } = require("../app/dist-electron/automation-runtime.cjs");
 
 function fixture(options = {}) {
@@ -42,6 +44,143 @@ function fakeChild(pid) {
   child.pid = pid;
   return child;
 }
+
+function fakeAutomationChild(pid) {
+  const child = fakeChild(pid);
+  child.exitCode = null;
+  child.stderr = new EventEmitter();
+  child.kill = () => {
+    if (child.exitCode !== null) return;
+    child.exitCode = 0;
+    queueMicrotask(() => child.emit("exit", 0));
+  };
+  return child;
+}
+
+function fakeAutomationSocket(processId, requests) {
+  const socket = new EventEmitter();
+  socket.destroyed = false;
+  socket.write = (line, callback) => {
+    const message = JSON.parse(line);
+    requests.push(message);
+    const payload =
+      message.type === "hello"
+        ? { protocol: 1, processId }
+        : message.type === "configure"
+          ? {
+              state: message.payload.automationEnabled
+                ? message.payload.pausedUntil
+                  ? "Paused"
+                  : message.payload.dryRun
+                    ? "Dry run"
+                    : "Monitoring"
+                : "Off",
+              running: true,
+              dryRun: message.payload.dryRun,
+              pausedUntil: message.payload.pausedUntil,
+              selectorRevision: "2026-08-v3",
+            }
+          : {};
+    queueMicrotask(() => {
+      callback?.();
+      socket.emit(
+        "data",
+        Buffer.from(
+          `${JSON.stringify({ id: message.id, ok: true, payload })}\n`,
+        ),
+      );
+    });
+    return true;
+  };
+  socket.destroy = () => {
+    if (socket.destroyed) return;
+    socket.destroyed = true;
+    socket.emit("close");
+  };
+  socket.end = socket.destroy;
+  queueMicrotask(() => socket.emit("connect"));
+  return socket;
+}
+
+async function waitFor(check, timeout = 1_000) {
+  const started = Date.now();
+  while (!check()) {
+    if (Date.now() - started > timeout) {
+      throw new Error("Timed out waiting for the synthetic helper restart.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+test("automation helper restart reapplies the last safe configuration", async () => {
+  const children = [];
+  const requests = [];
+  let processId = 10_000;
+  const client = new AutomationHostClient("synthetic-helper.exe", {
+    fileExists: () => true,
+    restartDelay: () => 5,
+    spawnProcess() {
+      const child = fakeAutomationChild(processId++);
+      children.push(child);
+      return child;
+    },
+    createConnection() {
+      return fakeAutomationSocket(processId, requests);
+    },
+  });
+  const settings = {
+    automationEnabled: true,
+    dryRun: true,
+    pausedUntil: null,
+    providers: { claudeDesktop: { enabled: true, method: "uia-fallback" } },
+  };
+  try {
+    assert.equal((await client.configure(settings)).state, "Dry run");
+    assert.equal(children.length, 1);
+    assert.deepEqual(
+      requests.filter((request) => request.type === "configure").at(-1).payload,
+      settings,
+    );
+
+    children[0].exitCode = 1;
+    children[0].emit("exit", 1);
+    await waitFor(
+      () =>
+        children.length === 2 &&
+        requests.filter((request) => request.type === "configure").length === 2,
+    );
+
+    assert.deepEqual(
+      requests.filter((request) => request.type === "configure").at(-1).payload,
+      settings,
+    );
+    assert.equal((await client.request("status")).constructor, Object);
+  } finally {
+    await client.shutdown();
+  }
+});
+
+test("capability matrix keeps unvalidated and high-impact paths non-live", () => {
+  const capabilities = capabilityMatrix({
+    browsers: [{ name: "Chrome", path: "C:/Chrome/chrome.exe" }],
+    nativeApps: { claude: { appId: "Claude" }, chatgpt: { appId: "ChatGPT" } },
+    claudeChromeExtensionIds: ["synthetic-extension"],
+    cli: { claude: "claude", codex: "codex" },
+  });
+  const claudeUia = capabilities.find(
+    (item) => item.capability === "Residual permission-card UIA",
+  );
+  const highImpact = capabilities.find(
+    (item) => item.provider === "High-impact approvals",
+  );
+  const webProfiles = capabilities.find(
+    (item) => item.capability === "Persistent isolated browser profile",
+  );
+  assert.equal(claudeUia.status, "Partial live validation");
+  assert.equal(highImpact.status, "Unavailable");
+  assert.equal(webProfiles.status, "Needs account test");
+  assert.match(highImpact.detail, /live UIA remain locked/i);
+});
 
 test("isolated launches use direct argument arrays and hold an exclusive profile lock", async () => {
   const children = [];

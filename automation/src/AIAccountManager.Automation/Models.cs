@@ -112,7 +112,7 @@ public sealed record HostSettings(
         5_000,
         30,
         null,
-        "2026-08-v1",
+        "2026-08-v3",
         new Dictionary<string, ProviderSetting>(StringComparer.OrdinalIgnoreCase));
 
     [JsonIgnore]

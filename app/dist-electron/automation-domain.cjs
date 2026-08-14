@@ -5,19 +5,20 @@ const path = require("node:path");
 
 const AUTOMATION_SCHEMA_VERSION = 2;
 const SESSION_SCHEMA_VERSION = 1;
+const SELECTOR_REVISION = "2026-08-v3";
 
 const PROVIDER_DEFAULTS = Object.freeze({
   claudeDesktop: Object.freeze({
     enabled: true,
-    method: "native-auto-with-uia-fallback",
+    method: "dry-run",
   }),
   claudeChrome: Object.freeze({
     enabled: true,
-    method: "native-auto-with-uia-fallback",
+    method: "dry-run",
   }),
   chatgptDesktop: Object.freeze({
     enabled: true,
-    method: "native-auto-review-with-uia-fallback",
+    method: "dry-run",
   }),
   chatgptBrowser: Object.freeze({ enabled: false, method: "dry-run" }),
 });
@@ -62,9 +63,15 @@ function cleanLabel(value, fallback = "") {
 
 function sanitizeProviderSettings(name, value) {
   const defaults = PROVIDER_DEFAULTS[name];
-  const method = ALLOWED_METHODS.has(value?.method)
+  // No provider adapter has passed the final user-controlled invocation gate.
+  // Preserve the broad allow-list for protocol compatibility, but keep saved
+  // production settings detection-only until a selector revision is promoted.
+  const requestedMethod = ALLOWED_METHODS.has(value?.method)
     ? value.method
     : defaults.method;
+  const method = ["dry-run", "disabled"].includes(requestedMethod)
+    ? requestedMethod
+    : "dry-run";
   return {
     enabled:
       typeof value?.enabled === "boolean" ? value.enabled : defaults.enabled,
@@ -94,7 +101,7 @@ function sanitizeAutomationSettings(input, now = Date.now()) {
     logRetentionDays: clamp(source.logRetentionDays, 1, 365, 30),
     pausedUntil:
       Number.isFinite(pausedUntil) && pausedUntil > now ? pausedUntil : null,
-    selectorRevision: cleanLabel(source.selectorRevision) || "2026-08-v1",
+    selectorRevision: SELECTOR_REVISION,
   };
 }
 
@@ -354,6 +361,7 @@ module.exports = {
   ALLOWED_METHODS,
   AUTOMATION_SCHEMA_VERSION,
   PROVIDER_DEFAULTS,
+  SELECTOR_REVISION,
   SESSION_SCHEMA_VERSION,
   SESSION_SURFACES,
   buildBrowserLaunchCommand,

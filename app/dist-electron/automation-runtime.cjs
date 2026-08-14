@@ -100,9 +100,17 @@ function createEphemeralLoginRelay(loginUrl) {
 }
 
 class AutomationHostClient extends EventEmitter {
-  constructor(helperPath) {
+  constructor(helperPath, dependencies = {}) {
     super();
     this.helperPath = helperPath;
+    this.spawnProcess = dependencies.spawnProcess ?? spawn;
+    this.createConnection =
+      dependencies.createConnection ??
+      ((pipePath) => net.createConnection(pipePath));
+    this.fileExists = dependencies.fileExists ?? fs.existsSync;
+    this.restartDelay =
+      dependencies.restartDelay ??
+      ((attempt) => Math.min(500 * 2 ** Math.min(attempt, 5), 15_000));
     this.child = null;
     this.socket = null;
     this.buffer = "";
@@ -111,6 +119,7 @@ class AutomationHostClient extends EventEmitter {
     this.desired = false;
     this.restartAttempt = 0;
     this.lastError = null;
+    this.lastSettings = null;
   }
 
   async ensureStarted() {
@@ -119,14 +128,14 @@ class AutomationHostClient extends EventEmitter {
     if (this.connecting) return this.connecting;
     this.connecting = this.#start();
     try {
-      await this.connecting;
+      return await this.connecting;
     } finally {
       this.connecting = null;
     }
   }
 
   async #start() {
-    if (!fs.existsSync(this.helperPath)) {
+    if (!this.fileExists(this.helperPath)) {
       throw new Error(
         "Automation host is not built. Run npm run automation:publish.",
       );
@@ -134,7 +143,7 @@ class AutomationHostClient extends EventEmitter {
     const suffix = crypto.randomBytes(12).toString("hex");
     const pipeName = `aam-automation-${process.pid}-${suffix}`;
     const secret = crypto.randomBytes(32).toString("base64url");
-    const child = spawn(
+    const child = this.spawnProcess(
       this.helperPath,
       ["--pipe", pipeName, "--parent-pid", String(process.pid)],
       {
@@ -186,14 +195,37 @@ class AutomationHostClient extends EventEmitter {
     if (hello.protocol !== PROTOCOL_VERSION) {
       throw new Error("Automation host protocol version did not match.");
     }
+    let restoredStatus = null;
+    if (this.lastSettings) {
+      try {
+        restoredStatus = await this.request("configure", this.lastSettings);
+      } catch (error) {
+        this.lastError = `Automation host settings restore failed: ${error.message}`;
+        this.emit("status", {
+          state: "Error",
+          running: false,
+          lastError: this.lastError,
+        });
+        child.kill();
+        throw new Error(this.lastError);
+      }
+    }
     this.restartAttempt = 0;
     this.lastError = null;
-    this.emit("status", { state: "Monitoring", processId: hello.processId });
+    this.emit(
+      "status",
+      restoredStatus ?? {
+        state: "Monitoring",
+        running: true,
+        processId: hello.processId,
+      },
+    );
+    return restoredStatus;
   }
 
   #connect(pipePath) {
     return new Promise((resolve, reject) => {
-      const socket = net.createConnection(pipePath);
+      const socket = this.createConnection(pipePath);
       const failed = (error) => {
         socket.destroy();
         reject(error);
@@ -282,7 +314,11 @@ class AutomationHostClient extends EventEmitter {
   }
 
   async configure(settings) {
-    await this.ensureStarted();
+    this.lastSettings = settings;
+    if (!this.socket || this.socket.destroyed) {
+      const restoredStatus = await this.ensureStarted();
+      if (restoredStatus) return restoredStatus;
+    }
     return this.request("configure", settings);
   }
 
@@ -298,12 +334,13 @@ class AutomationHostClient extends EventEmitter {
     if (this.child && this.child.exitCode === null) this.child.kill();
     this.child = null;
     this.socket = null;
+    this.lastSettings = null;
     this.#rejectPending(new Error("Automation host stopped."));
   }
 
   #scheduleRestart() {
-    const attempt = Math.min(this.restartAttempt++, 5);
-    const wait = Math.min(500 * 2 ** attempt, 15_000);
+    const attempt = this.restartAttempt++;
+    const wait = this.restartDelay(attempt);
     setTimeout(() => {
       if (!this.desired || this.connecting || this.socket) return;
       this.ensureStarted().catch((error) => {
@@ -716,16 +753,18 @@ function capabilityMatrix(discovery) {
     {
       provider: "Claude Desktop / Cowork",
       capability: "Native Auto and Skip mode",
-      status: discovery.nativeApps.claude ? "Needs live test" : "Blocked",
+      status: discovery.nativeApps.claude
+        ? "Partial live validation"
+        : "Blocked",
       detail:
-        "Explicit UIA mode selection is package-scoped; final selectors need a live menu test.",
+        "The installed package is trusted, but the live menu action and an expiring trusted-session policy are not validated. Auto/Skip is unavailable; Manual restore remains available.",
     },
     {
       provider: "Claude Desktop / Cowork",
       capability: "Residual permission-card UIA",
-      status: "Needs live test",
+      status: "Partial live validation",
       detail:
-        "Trusted package identity and bounded card recognition are implemented; invocation remains dry-run by default.",
+        "Real Gmail-draft and Windows-MCP cards were recognized in Dry run. Paused-card, simultaneous-window, and one user-controlled Allow once invocation gates remain; production invocation is locked.",
     },
     {
       provider: "Claude in Chrome",
@@ -738,10 +777,10 @@ function capabilityMatrix(discovery) {
     },
     {
       provider: "Claude Code",
-      capability: "Profile-scoped Auto / Skip launch",
+      capability: "Profile-scoped permission launch",
       status: discovery.cli.claude ? "Verified" : "Blocked",
       detail:
-        "Uses supported --permission-mode flags without changing global settings.",
+        "Manual per-launch mode is available without changing global settings. Saved Auto/Skip intent is refused until an expiring trusted-session policy exists.",
     },
     {
       provider: "ChatGPT / Codex desktop",
@@ -766,17 +805,24 @@ function capabilityMatrix(discovery) {
     },
     {
       provider: "Codex CLI",
-      capability: "No prompts / Auto-review launch",
+      capability: "Profile-scoped permission launch",
       status: discovery.cli.codex ? "Verified" : "Blocked",
       detail:
-        "Uses supported per-launch approval and sandbox flags; global config is untouched.",
+        "Manual on-request launch is available and global config is untouched. No-prompts/auto-review intent is refused until an expiring trusted-session policy exists.",
     },
     {
       provider: "Claude / ChatGPT web",
       capability: "Persistent isolated browser profile",
-      status: discovery.browsers.length ? "Best effort" : "Blocked",
+      status: discovery.browsers.length ? "Needs account test" : "Blocked",
       detail:
         "App-managed user-data directories isolate cookies; command construction and locks are verified, while a two-account login still needs a live test.",
+    },
+    {
+      provider: "High-impact approvals",
+      capability: "Expiring trusted-session policy",
+      status: "Unavailable",
+      detail:
+        "Sending messages, purchases, account-security changes, and other high-impact unattended actions are not enabled. Native Auto/Skip and live UIA remain locked until a selected provider/profile can be trusted temporarily, warned visibly, paused, expired, and audited.",
     },
     {
       provider: "Claude native desktop",

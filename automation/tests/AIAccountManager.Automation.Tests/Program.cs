@@ -5,18 +5,23 @@ using AIAccountManager.Automation;
 var tests = new (string Name, Action Run)[]
 {
     ("positive Claude tree needs every strong signal", PositiveClaudeTree),
+    ("live Claude Windows-MCP card is recognized", LiveClaudeWindowsMcpTree),
+    ("live Claude Gmail draft card is recognized", LiveClaudeGmailDraftTree),
+    ("permission card remains discoverable after a long conversation", DeepClaudeTree),
     ("spoofed process name is rejected", SpoofedProcessName),
     ("elevated and secure surfaces are rejected", ElevatedSurface),
     ("button in a different card is rejected", WrongAncestor),
     ("partial and malformed trees are rejected", PartialTree),
     ("localized selectors remain data-driven", LocalizedSelector),
-    ("multiple cards and windows keep distinct fingerprints", MultipleCards),
+    ("multiple cards in one window are independently recognized", MultipleCards),
     ("browser candidates can never become live from selector data alone", BrowserNeverLive),
     ("duplicate event fingerprints expire", Dedupe),
+    ("an unchanged visible card remains suppressed until disappearance", ActiveDedupe),
     ("protocol versions and secrets fail closed", Protocol),
     ("audit storage redacts and can be cleared", Audit),
     ("host settings clamp fallback and retention", Settings),
     ("native-only and unknown methods cannot enter UIA", ProviderMethods),
+    ("unverified selectors report validation required instead of monitoring", ValidationRequiredStatus),
 };
 
 var failures = 0;
@@ -47,6 +52,45 @@ static void PositiveClaudeTree()
     Equal(true, decision.IsMatch);
     Equal(100, decision.Score);
     Equal(6, decision.Signals.Count(signal => signal.Passed));
+}
+
+static void LiveClaudeWindowsMcpTree()
+{
+    var root = AccessibleNodeSnapshot.Node("Claude", "Window",
+        AccessibleNodeSnapshot.Node("Primary pane", "Pane",
+            AccessibleNodeSnapshot.Node("Permission card", "Group",
+                AccessibleNodeSnapshot.Node("Claude wants to use App from Windows-MCP", "Button"),
+                AccessibleNodeSnapshot.Node("Deny", "Button"),
+                AccessibleNodeSnapshot.Node("Always allow", "Button"),
+                AccessibleNodeSnapshot.Node("Allow once", "Button"))));
+    var decision = new RecognitionEngine().Evaluate(Surface(TrustedClaude(), root), ClaudeSelector());
+    Equal(true, decision.IsMatch);
+    Equal("Claude wants to use App from Windows-MCP", decision.SanitizedLabel);
+}
+
+static void LiveClaudeGmailDraftTree()
+{
+    var root = AccessibleNodeSnapshot.Node("Claude", "Window",
+        AccessibleNodeSnapshot.Node("Permission card", "Group",
+            AccessibleNodeSnapshot.Node("Claude wants to use Create draft email from Gmail", "Button"),
+            AccessibleNodeSnapshot.Node("Deny", "Button"),
+            AccessibleNodeSnapshot.Node("Always allow", "Button"),
+            AccessibleNodeSnapshot.Node("Allow once", "Button")));
+    var decision = new RecognitionEngine().Evaluate(Surface(TrustedClaude(), root), ClaudeSelector());
+    Equal(true, decision.IsMatch);
+    Equal("Claude wants to use Create draft email from Gmail", decision.SanitizedLabel);
+}
+
+static void DeepClaudeTree()
+{
+    var history = Enumerable.Range(0, 500)
+        .Select(index => AccessibleNodeSnapshot.Node($"Conversation item {index}", "Text"))
+        .Append(AccessibleNodeSnapshot.Node("Permission card", "Group",
+            AccessibleNodeSnapshot.Node("Claude wants to use App from Windows-MCP", "Button"),
+            AccessibleNodeSnapshot.Node("Allow once", "Button")))
+        .ToArray();
+    var root = AccessibleNodeSnapshot.Node("Claude", "Window", history);
+    Equal(true, new RecognitionEngine().Evaluate(Surface(TrustedClaude(), root), ClaudeSelector()).IsMatch);
 }
 
 static void SpoofedProcessName()
@@ -117,13 +161,15 @@ static void MultipleCards()
             AccessibleNodeSnapshot.Node("Claude wants to use javascript_tool", "Text"),
             AccessibleNodeSnapshot.Node("Allow this action", "Button")));
     var engine = new RecognitionEngine();
-    var firstWindow = Surface(TrustedClaude(), root);
-    var secondWindow = firstWindow with { Hwnd = 200 };
-    var first = engine.Evaluate(firstWindow, ClaudeSelector());
-    var second = engine.Evaluate(secondWindow, ClaudeSelector());
-    Equal(true, first.IsMatch);
-    Equal(true, second.IsMatch);
-    Equal(false, DedupeCache.Fingerprint(firstWindow, first) == DedupeCache.Fingerprint(secondWindow, second));
+    var surface = Surface(TrustedClaude(), root);
+    var matches = engine.EvaluateMatches(surface, ClaudeSelector());
+    Equal(2, matches.Count);
+    Equal(2, matches.Select(match => DedupeCache.Fingerprint(surface, match)).Distinct().Count());
+    var secondWindow = surface with { Hwnd = 200 };
+    var secondWindowMatches = engine.EvaluateMatches(secondWindow, ClaudeSelector());
+    Equal(false,
+        DedupeCache.Fingerprint(surface, matches[0]) ==
+        DedupeCache.Fingerprint(secondWindow, secondWindowMatches[0]));
 }
 
 static void BrowserNeverLive()
@@ -149,6 +195,18 @@ static void Dedupe()
     Equal(true, cache.TryAdd("same", now));
     Equal(false, cache.TryAdd("same", now.AddSeconds(1)));
     Equal(true, cache.TryAdd("same", now.AddSeconds(3)));
+}
+
+static void ActiveDedupe()
+{
+    var cache = new DedupeCache(TimeSpan.FromMilliseconds(1));
+    Equal(2, cache.ReconcileActive("claude|1|window", ["card-a", "card-b"]).Count);
+    Thread.Sleep(5);
+    Equal(0, cache.ReconcileActive("claude|1|window", ["card-a", "card-b"]).Count);
+    Equal(0, cache.ReconcileActive("claude|1|window", ["card-b"]).Count);
+    Equal(1, cache.ReconcileActive("claude|1|window", ["card-a", "card-b"]).Count);
+    Equal(0, cache.ReconcileActive("claude|1|window", []).Count);
+    Equal(2, cache.ReconcileActive("claude|1|window", ["card-a", "card-b"]).Count);
 }
 
 static void Protocol()
@@ -209,9 +267,29 @@ static void ProviderMethods()
     Equal("disabled", settings.Providers["claudeDesktop"].Method);
 }
 
+static void ValidationRequiredStatus()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"aam-status-test-{Guid.NewGuid():N}");
+    try
+    {
+        var catalog = new SelectorCatalog(1, "2026-08-v3", [ClaudeSelector() with { LiveEligible = false }]);
+        using var engine = new AutomationEventEngine(catalog, new AuditStore(root));
+        engine.Configure(new HostSettings(true, false, 150, 5_000, 30, null, "2026-08-v3",
+            new Dictionary<string, ProviderSetting>
+            {
+                ["claudeDesktop"] = new(true, "uia-fallback"),
+            }));
+        Equal("Validation required", engine.Status().State);
+    }
+    finally
+    {
+        if (Directory.Exists(root)) Directory.Delete(root, true);
+    }
+}
+
 static ProviderSelector ClaudeSelector() => new(
     "claudeDesktop", "desktop", ["Claude", "Cowork"],
-    ["Claude wants to use computer", "Claude wants to use javascript_tool"],
+    ["Claude wants to use", "Claude wants to use computer", "Claude wants to use javascript_tool", "Claude wants to use App from Windows-MCP"],
     ["Allow once", "Allow this action"], true, "needs-live-test");
 
 static ProcessIdentitySnapshot TrustedClaude() => new(

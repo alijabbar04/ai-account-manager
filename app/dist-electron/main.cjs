@@ -40,6 +40,7 @@ var {
   capabilityMatrix,
 } = require("./automation-runtime.cjs");
 var {
+  migrateSettingsContainer,
   redactText,
   sanitizeAutomationSettings,
 } = require("./automation-domain.cjs");
@@ -2866,13 +2867,19 @@ var DEFAULT_UPDATE_SETTINGS = {
 };
 function loadSettings() {
   const saved = readJson(settingsFile()) ?? {};
-  return {
+  const migrated = migrateSettingsContainer(saved);
+  const normalized = {
+    ...migrated,
     theme: saved.theme ?? "system",
     alerts: { ...DEFAULT_ALERT_SETTINGS, ...(saved.alerts ?? {}) },
     alertState: saved.alertState ?? {},
     updates: { ...DEFAULT_UPDATE_SETTINGS, ...(saved.updates ?? {}) },
-    automation: sanitizeAutomationSettings(saved.automation),
+    automation: migrated.automation,
   };
+  if (JSON.stringify(saved) !== JSON.stringify(normalized)) {
+    writeJsonAtomic(settingsFile(), normalized);
+  }
+  return normalized;
 }
 function saveSettings(patch) {
   writeJsonAtomic(settingsFile(), { ...loadSettings(), ...patch });
@@ -2929,6 +2936,26 @@ function automationHelperExecutable() {
         "AIAccountManager.Automation.exe",
       );
 }
+function summarizeAutomationActivity(record) {
+  if (!record || typeof record !== "object") return null;
+  return {
+    timestamp: Number(record.timestamp) || Date.now(),
+    provider: redactText(record.provider, 40) || "unknown",
+    surface: redactText(record.surface, 40) || "unknown",
+    requestedAction: redactText(record.requestedAction, 40) || "none",
+    method: redactText(record.method, 60) || "unknown",
+    result: redactText(record.result, 40) || "unknown",
+    dryRun: record.dryRun === true,
+    errorCode: redactText(record.errorCode, 80),
+  };
+}
+function isSuccessfulSafeAction(record) {
+  return (
+    record?.result === "success" &&
+    record?.dryRun !== true &&
+    ["approve", "apply-native-mode", "launch"].includes(record?.requestedAction)
+  );
+}
 var Backend = class {
   constructor(getWindow) {
     this.getWindow = getWindow;
@@ -2946,8 +2973,10 @@ var Backend = class {
       this.automationStatus = { ...this.automationStatus, ...status };
       void this.pushAutomationState();
     });
-    this.automationHost.on("activity", () => {
+    this.automationHost.on("activity", (record) => {
+      this.updateAutomationActivitySummary([record], false);
       this.getWindow()?.webContents.send("automation:activity-changed");
+      void this.pushAutomationState();
     });
   }
   usage = new UsageService();
@@ -2959,6 +2988,8 @@ var Backend = class {
   guideWin = null;
   registeredEmergencyHotkey = null;
   automationAttention = null;
+  recentAutomationActivity = [];
+  lastSafeAction = null;
   async init() {
     this.defaultDir = await getDefaultConfigDir().catch(() => null);
     for (const profile of listProfiles()) {
@@ -3091,6 +3122,10 @@ var Backend = class {
     if (this.automationHost.socket) {
       try {
         this.automationStatus = await this.automationHost.request("status");
+        const records = await this.automationHost.request("activity:list", {
+          limit: 25,
+        });
+        this.updateAutomationActivitySummary(records);
       } catch {}
     }
     if (this.automationAttention) {
@@ -3106,7 +3141,23 @@ var Backend = class {
       profiles: this.sessions.list(),
       discovery,
       capabilities: capabilityMatrix(discovery),
+      recentActivity: this.recentAutomationActivity,
+      lastSafeAction: this.lastSafeAction,
     };
+  }
+  updateAutomationActivitySummary(records, replace = true) {
+    const safeRecords = Array.isArray(records) ? records : [];
+    const summaries = safeRecords
+      .slice(0, 5)
+      .map(summarizeAutomationActivity)
+      .filter(Boolean);
+    this.recentAutomationActivity = replace
+      ? summaries
+      : [...summaries, ...this.recentAutomationActivity].slice(0, 5);
+    const successful = safeRecords.find(isSuccessfulSafeAction);
+    if (successful)
+      this.lastSafeAction = summarizeAutomationActivity(successful);
+    else if (replace) this.lastSafeAction = null;
   }
   async pushAutomationState() {
     const window = this.getWindow();
@@ -3133,7 +3184,9 @@ var Backend = class {
       retryCount: 0,
       errorCode,
     });
+    this.updateAutomationActivitySummary([record], false);
     this.getWindow()?.webContents.send("automation:activity-changed", record);
+    void this.pushAutomationState();
   }
   // ---- Usage tracking guide (in-app PDF viewer) ----------------------
   guidePdfPath() {
@@ -3448,15 +3501,9 @@ var Backend = class {
           if (!["manual", "auto", "skip"].includes(mode)) {
             throw new Error("Unsupported native mode.");
           }
-          const settings = loadSettings().automation;
-          if (
-            mode !== "manual" &&
-            (!settings.firstRunAcknowledged ||
-              !settings.automationEnabled ||
-              settings.dryRun)
-          ) {
+          if (mode !== "manual") {
             throw new Error(
-              "Enable unattended permissions and turn off Dry run before applying Auto or Skip. Manual restore remains available.",
+              "Native Auto and Skip are unavailable until the live Claude menu and an expiring trusted-session policy are validated. Manual restore remains available.",
             );
           }
           await this.automationHost.ensureStarted();
@@ -3483,7 +3530,10 @@ var Backend = class {
       try {
         await this.automationHost.ensureStarted();
         await this.automationHost.request("activity:clear");
+        this.recentAutomationActivity = [];
+        this.lastSafeAction = null;
         this.getWindow()?.webContents.send("automation:activity-changed");
+        await this.pushAutomationState();
         return { ok: true };
       } catch (err) {
         return { ok: false, error: err.message };
@@ -3595,6 +3645,14 @@ var Backend = class {
       try {
         profile = this.sessions.list().find((item) => item.id === id);
         if (!profile) throw new Error("Session profile not found.");
+        if (
+          ["claude-code", "codex"].includes(profile.surface) &&
+          profile.unattendedMode !== "manual"
+        ) {
+          throw new Error(
+            "This saved Auto/Skip intent cannot launch until an expiring trusted-session policy is available. Edit the profile to Manual.",
+          );
+        }
         let result;
         if (["claude-web", "chatgpt-web"].includes(profile.surface)) {
           result = await this.sessions.launchBrowserProfile(id);
