@@ -185,7 +185,10 @@ and stays on the machine that runs the app.
   (see the note below).
 - **Automation is fail-closed.** It starts Off and Dry run, requires a risk
   acknowledgement, never drives secure/elevated/unknown surfaces, and keeps
-  unverified provider selectors detection-only.
+  unverified provider selectors detection-only. Version 1.5.0 also refuses
+  native/CLI Auto and Skip until an expiring selected provider/profile trust
+  policy exists; the UI reports **Validation required** instead of implying a
+  live adapter.
 - **Isolated web sessions belong to their browser profile.** The app stores
   profile labels and generated paths, never passwords/cookies/tokens, and does
   not open a remote-debugging port.

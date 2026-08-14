@@ -1812,9 +1812,12 @@ code {
 .automation-state-badge[data-state="dry-run"],
 .automation-state-badge[data-state="paused"],
 .automation-state-badge[data-state="needs-attention"],
+.automation-state-badge[data-state="validation-required"],
 .capability-status[data-status="best-effort"],
 .capability-status[data-status="experimental"],
 .capability-status[data-status="needs-live-test"],
+.capability-status[data-status="partial-live-validation"],
+.capability-status[data-status="needs-account-test"],
 .activity-result[data-result="detected"],
 .activity-result[data-result="dry-run"] {
   color: color-mix(in srgb, var(--status-warn) 64%, var(--ink));
@@ -1828,6 +1831,7 @@ code {
 }
 .capability-status[data-status="unsupported"],
 .capability-status[data-status="unsupported-by-vendor"],
+.capability-status[data-status="unavailable"],
 .capability-status[data-status="blocked"] {
   color: var(--status-crit);
   background: color-mix(in srgb, var(--status-crit) 11%, transparent);
@@ -1945,6 +1949,57 @@ code {
   color: var(--muted);
   font-size: 11.5px;
   line-height: 1.4;
+}
+.automation-safety-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.automation-safety-status > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.automation-safety-status > div + div {
+  border-left: 1px solid var(--hairline);
+  padding-left: 14px;
+}
+.automation-safety-status h3 {
+  font-size: 12px;
+  color: var(--muted);
+}
+.automation-safety-status small {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.recent-safe-activity ul {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recent-safe-activity li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.recent-safe-activity li span:first-child {
+  color: var(--muted);
+  font-size: 10px;
+}
+.trusted-session-boundary > b {
+  width: fit-content;
+  border-radius: 99px;
+  padding: 3px 8px;
+  color: var(--status-crit);
+  background: color-mix(in srgb, var(--status-crit) 10%, transparent);
+  font-size: 11px;
 }
 .pause-card,
 .hotkey-card {
@@ -2351,8 +2406,15 @@ kbd {
 
 @media (max-width: 900px) {
   .automation-control-row,
-  .auth-routing-grid {
+  .auth-routing-grid,
+  .automation-safety-status {
     grid-template-columns: 1fr;
+  }
+  .automation-safety-status > div + div {
+    border-top: 1px solid var(--hairline);
+    border-left: 0;
+    padding-top: 12px;
+    padding-left: 0;
   }
   .activity-filters {
     grid-template-columns: 1fr 1fr;

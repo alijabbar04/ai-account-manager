@@ -331,6 +331,13 @@ not need a separate .NET installation. For permission detection, hotkey,
 profile-lock, and diagnostics issues, see
 [AUTOMATION_AND_SESSIONS.md](AUTOMATION_AND_SESSIONS.md).
 
+**Validation required** is not a helper failure. It means the global live mode
+was requested but no provider selector has passed every production invocation
+gate. Keep Detection only selected; the capability matrix lists the exact
+remaining live or account-access test for each surface. Native/CLI Auto and
+Skip are also refused until an expiring selected provider/profile trust policy
+is implemented and validated.
+
 ### `npm test` fails after I edited something in `app/`
 
 That is the runtime verification doing its job. `scripts/verify-runtime.cjs`

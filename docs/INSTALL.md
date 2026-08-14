@@ -114,9 +114,11 @@ up.
 The separate **Automation & Sessions** area can keep trusted provider permission
 monitoring alive in the tray and launch isolated Claude/ChatGPT browser
 profiles. It starts Off and Dry run and requires a risk acknowledgement. Read
-[AUTOMATION_AND_SESSIONS.md](AUTOMATION_AND_SESSIONS.md) before enabling live
-unattended modes; it includes the emergency stop, capability matrix, and exact
-steps for logging an authorised second account into the correct profile.
+[AUTOMATION_AND_SESSIONS.md](AUTOMATION_AND_SESSIONS.md) before enabling
+monitoring; it includes the emergency stop, capability matrix, and exact steps
+for logging an authorised second account into the correct profile. In 1.5.0,
+all provider adapters remain detection-only and native/CLI Auto or Skip launch
+is validation-locked pending an expiring trusted-session policy.
 
 ### Step 10 — Optional: track API key spending
 

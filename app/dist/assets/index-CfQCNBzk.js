@@ -16961,11 +16961,9 @@ const AUTOMATION_PROVIDERS = [
     id: "claudeDesktop",
     title: "Claude Desktop / Cowork",
     detail:
-      "Native Auto or Skip first, with a tightly scoped Claude package UIA fallback for residual cards.",
+      "Real cards can be detected in the trusted Claude package. Live invocation and native Auto/Skip remain validation-locked.",
     methods: [
-      ["native-auto-with-uia-fallback", "Native Auto + UIA fallback"],
-      ["native-skip", "Native Skip / no prompts"],
-      ["uia-fallback", "UIA fallback only"],
+      ["dry-run", "Detection only"],
       ["disabled", "Disabled"],
     ],
   },
@@ -16975,8 +16973,6 @@ const AUTOMATION_PROVIDERS = [
     detail:
       "Requires Google-signed Chrome and Claude context in the same bounded side-panel subtree.",
     methods: [
-      ["native-auto-with-uia-fallback", "Native Auto + UIA fallback"],
-      ["native-skip", "Native Skip / no prompts"],
       ["dry-run", "Detection only"],
       ["disabled", "Disabled"],
     ],
@@ -16987,8 +16983,6 @@ const AUTOMATION_PROVIDERS = [
     detail:
       "Unified and legacy packages are identity-checked separately. UIA action waits for a real captured card.",
     methods: [
-      ["native-auto-review-with-uia-fallback", "Auto-review + UIA fallback"],
-      ["uia-fallback", "UIA fallback only"],
       ["dry-run", "Detection only"],
       ["disabled", "Disabled"],
     ],
@@ -17024,12 +17018,12 @@ function AutomationRiskDialog({ kind: f, onClose: o, onAccept: v }) {
         i.jsx("div", { className: "risk-icon", children: "⚠" }),
         i.jsx("h2", {
           children: w
-            ? "Turn on live unattended approvals?"
+            ? "Request live mode?"
             : "Before unattended permissions are enabled",
         }),
         i.jsx("p", {
           children:
-            "Unattended modes can let agents operate files, browser pages, desktop apps, and connected services while you are away. Vendor safety controls still apply, but no automation is risk-free.",
+            "Unattended modes can let agents operate files, browser pages, desktop apps, and connected services while you are away. No provider adapter is promoted to live invocation in this build; this acknowledgement does not bypass its validation lock.",
         }),
         i.jsx("div", {
           className: "automation-safety-list",
@@ -17046,6 +17040,10 @@ function AutomationRiskDialog({ kind: f, onClose: o, onAccept: v }) {
               i.jsx("li", {
                 children:
                   "Start in Dry run to inspect detections before allowing invocation.",
+              }),
+              i.jsx("li", {
+                children:
+                  "High-impact actions and native Auto/Skip remain unavailable until an expiring, selected provider/profile trusted-session policy is implemented and validated.",
               }),
             ],
           }),
@@ -17086,7 +17084,7 @@ function AutomationRiskDialog({ kind: f, onClose: o, onAccept: v }) {
               children: E
                 ? "Saving…"
                 : w
-                  ? "Enable live approvals"
+                  ? "Request live mode"
                   : "Acknowledge & start dry run",
             }),
           ],
@@ -17222,12 +17220,20 @@ function SessionProfileDialog({ profile: f, onClose: o, onSaved: v }) {
                     ),
                     i.jsx(
                       "option",
-                      { value: "auto", children: "Auto / auto-review" },
+                      {
+                        value: "auto",
+                        disabled: !0,
+                        children: "Auto / auto-review (trust policy required)",
+                      },
                       "auto",
                     ),
                     i.jsx(
                       "option",
-                      { value: "skip", children: "Skip / no prompts" },
+                      {
+                        value: "skip",
+                        disabled: !0,
+                        children: "Skip / no prompts (trust policy required)",
+                      },
                       "skip",
                     ),
                   ],
@@ -17267,6 +17273,13 @@ function SessionProfileDialog({ profile: f, onClose: o, onSaved: v }) {
             className: "hint",
             children:
               "Desktop apps may be single-instance and can focus an existing window. For a reliably separate account, choose an isolated web app profile.",
+          }),
+        _ &&
+          i.jsx("div", {
+            className: "banner",
+            "data-kind": "warn",
+            children:
+              "CLI Auto and Skip launch modes are validation-locked until an expiring trusted-session policy exists. Choose Manual to launch this profile.",
           }),
         ["claude-desktop", "chatgpt-desktop"].includes(d.surface) &&
           i.jsx("div", {
@@ -17365,7 +17378,7 @@ function AutomationPermissionsView({ state: f, onPatch: o, showToast: v }) {
               }),
               i.jsx("p", {
                 children:
-                  "Prefer provider-native Auto or Skip modes, then handle only strictly recognized residual cards through Windows UI Automation.",
+                  "Detect only strictly recognized provider permission cards. Live invocation remains locked until each provider passes its final live safety gates.",
               }),
             ],
           }),
@@ -17450,6 +17463,73 @@ function AutomationPermissionsView({ state: f, onPatch: o, showToast: v }) {
           }),
         ],
       }),
+      i.jsxs("section", {
+        className: "panel automation-safety-status",
+        "aria-live": "polite",
+        children: [
+          i.jsxs("div", {
+            className: "last-safe-action",
+            children: [
+              i.jsx("h3", { children: "Last safe action" }),
+              f.lastSafeAction
+                ? i.jsxs(i.Fragment, {
+                    children: [
+                      i.jsx("b", {
+                        children: new Date(
+                          f.lastSafeAction.timestamp,
+                        ).toLocaleString(),
+                      }),
+                      i.jsx("small", {
+                        children: `${f.lastSafeAction.provider} · ${f.lastSafeAction.requestedAction} · ${f.lastSafeAction.result}`,
+                      }),
+                    ],
+                  })
+                : i.jsx("small", {
+                    children: "No successful non-dry-run action recorded.",
+                  }),
+            ],
+          }),
+          i.jsxs("div", {
+            className: "recent-safe-activity",
+            children: [
+              i.jsx("h3", { children: "Recent privacy-safe activity" }),
+              (f.recentActivity ?? []).length
+                ? i.jsx("ul", {
+                    children: f.recentActivity.slice(0, 3).map((B, R) =>
+                      i.jsxs(
+                        "li",
+                        {
+                          children: [
+                            i.jsx("span", {
+                              children: new Date(B.timestamp).toLocaleString(),
+                            }),
+                            i.jsx("span", {
+                              children: `${B.provider} · ${B.requestedAction} · ${B.dryRun ? "dry run" : B.result}`,
+                            }),
+                          ],
+                        },
+                        `${B.timestamp}-${B.provider}-${R}`,
+                      ),
+                    ),
+                  })
+                : i.jsx("small", {
+                    children: "No redacted activity yet.",
+                  }),
+            ],
+          }),
+          i.jsxs("div", {
+            className: "trusted-session-boundary",
+            children: [
+              i.jsx("h3", { children: "High-impact approvals" }),
+              i.jsx("b", { children: "Unavailable" }),
+              i.jsx("small", {
+                children:
+                  "Native Auto/Skip and live approval stay locked until temporary trust can be limited to one selected provider or profile, warned, expired, paused, and audited.",
+              }),
+            ],
+          }),
+        ],
+      }),
       i.jsx("div", {
         className: "automation-provider-grid",
         children: AUTOMATION_PROVIDERS.map((B) => {
@@ -17521,12 +17601,11 @@ function AutomationPermissionsView({ state: f, onPatch: o, showToast: v }) {
                           "button",
                           {
                             className: "btn btn-small",
-                            disabled:
-                              !R.enabled ||
-                              (Y !== "manual" &&
-                                (!w.automationEnabled ||
-                                  !w.firstRunAcknowledged ||
-                                  w.dryRun)),
+                            disabled: !R.enabled || Y !== "manual",
+                            title:
+                              Y === "manual"
+                                ? "Restore Claude to manual approval when its trusted menu is visible."
+                                : "Unavailable until live menu validation and an expiring trusted-session policy pass.",
                             onClick: async () => {
                               const H =
                                 await window.cam.automation.applyNativeMode(Y);
@@ -18249,7 +18328,7 @@ function AutomationCapabilityMatrix({ capabilities: f }) {
           i.jsx("span", { children: "Provider capability matrix" }),
           i.jsx("small", {
             children:
-              "Verified, best effort, experimental, unsupported, and pending live test",
+              "Verified, partial, account-test pending, unavailable, experimental, and unsupported",
           }),
         ],
       }),
@@ -18334,7 +18413,7 @@ function AutomationSessionsView({ showToast: f }) {
         const K = await window.cam.automation.setSettings(N);
         if (!K.ok)
           throw new Error(K.error ?? "Could not save automation settings.");
-        v({ ...o, settings: K.settings });
+        await g();
       } catch (K) {
         C(K.message);
         f(K.message);
@@ -18348,12 +18427,12 @@ function AutomationSessionsView({ showToast: f }) {
       const K = await window.cam.automation.setSettings(N);
       if (!K.ok)
         throw new Error(K.error ?? "Could not enable unattended permissions.");
-      v({ ...o, settings: K.settings });
+      await g();
       D(null);
       f(
         E === "enable"
           ? "Unattended permissions enabled in Dry run."
-          : "Live unattended approvals enabled.",
+          : "Live mode requested; every unvalidated provider remains detection-only.",
       );
     },
     _ = [
