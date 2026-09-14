@@ -1,14 +1,16 @@
 {
   "name": "ai-account-manager-desktop",
   "productName": "AI Account Manager",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "description": "Manage Claude accounts, GPT/Codex usage, provider permissions, alerts, and API analytics.",
   "private": true,
   "main": "app/dist-electron/main.cjs",
   "scripts": {
+    "start": "electron .",
     "format": "prettier --write app scripts tests .github",
     "format:check": "prettier --check app scripts tests .github",
     "verify": "node scripts/verify-runtime.cjs",
+    "verify:safestorage": "node scripts/verify-safestorage-migration.cjs",
     "test:runtime": "node --test tests/*.test.cjs && node scripts/verify-runtime.cjs",
     "automation:test": "dotnet run --project automation/tests/AIAccountManager.Automation.Tests/AIAccountManager.Automation.Tests.csproj --configuration Release",
     "automation:harness:build": "dotnet build automation/tests/AIAccountManager.Automation.Harness/AIAccountManager.Automation.Harness.csproj --configuration Release",

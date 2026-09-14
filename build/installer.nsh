@@ -5,6 +5,8 @@
   ; Electron's user-level start-at-login entry must not outlive the app.
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "AI Account Manager"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ai-account-manager-desktop"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Claude Account Manager"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "claude-account-manager-desktop"
 
   ; Remove launcher metadata and stale locks, while deliberately preserving
   ; browser-profiles because they contain vendor-owned signed-in sessions.

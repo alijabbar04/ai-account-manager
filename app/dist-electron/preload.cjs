@@ -4,10 +4,15 @@
 var import_electron = require("electron");
 var api = {
   listStates: () => import_electron.ipcRenderer.invoke("state:get"),
-  createProfile: (name) =>
-    import_electron.ipcRenderer.invoke("profiles:create", name),
-  importProfile: (name, configDir) =>
-    import_electron.ipcRenderer.invoke("profiles:import", name, configDir),
+  createProfile: (name, dashboardRole) =>
+    import_electron.ipcRenderer.invoke("profiles:create", name, dashboardRole),
+  importProfile: (name, configDir, dashboardRole) =>
+    import_electron.ipcRenderer.invoke(
+      "profiles:import",
+      name,
+      configDir,
+      dashboardRole,
+    ),
   renameProfile: (id, name) =>
     import_electron.ipcRenderer.invoke("profiles:rename", id, name),
   removeProfile: (id, deleteDir) =>
@@ -26,8 +31,41 @@ var api = {
     return () =>
       import_electron.ipcRenderer.removeListener("gpt:usage-changed", listener);
   },
-  launch: (kind, profileId) =>
-    import_electron.ipcRenderer.invoke("launch", kind, profileId),
+  launchVSCode: (profileId) =>
+    import_electron.ipcRenderer.invoke("profiles:launchVSCode", profileId),
+  login: (profileId) =>
+    import_electron.ipcRenderer.invoke("profiles:login", profileId),
+  launchers: {
+    claudeCowork: () =>
+      import_electron.ipcRenderer.invoke("launchers:claudeCowork"),
+    codexChat: () => import_electron.ipcRenderer.invoke("launchers:codexChat"),
+    vscodeCodex: () =>
+      import_electron.ipcRenderer.invoke("launchers:vscodeCodex"),
+    vscodeProject: () =>
+      import_electron.ipcRenderer.invoke("launchers:vscodeProject"),
+    openHelp: (target) =>
+      import_electron.ipcRenderer.invoke("launchers:help", target),
+  },
+  visibility: {
+    get: () => import_electron.ipcRenderer.invoke("profiles:visibility:get"),
+    setHidden: (profileId, hidden) =>
+      import_electron.ipcRenderer.invoke(
+        "profiles:visibility:setHidden",
+        profileId,
+        hidden,
+      ),
+    showAll: () =>
+      import_electron.ipcRenderer.invoke("profiles:visibility:showAll"),
+  },
+  otherAccountsLayout: {
+    get: () =>
+      import_electron.ipcRenderer.invoke("profiles:otherAccountsLayout:get"),
+    set: (layout) =>
+      import_electron.ipcRenderer.invoke(
+        "profiles:otherAccountsLayout:set",
+        layout,
+      ),
+  },
   setDefault: (profileId) =>
     import_electron.ipcRenderer.invoke("default:set", profileId),
   revealFolder: (profileId) =>

@@ -12629,7 +12629,7 @@ function Hv({
           }),
           i.jsx("span", {
             className: "sidebar-title",
-            children: "Account Manager",
+            children: "AI Account Manager",
           }),
         ],
       }),
@@ -12658,6 +12658,12 @@ function Hv({
             onClick: () => o("skills-sync"),
             icon: "⇄",
             label: "Skills Sync",
+          }),
+          i.jsx(Zt, {
+            active: f === "settings",
+            onClick: () => o("settings"),
+            icon: "⚙",
+            label: "Settings",
           }),
         ],
       }),
@@ -13430,6 +13436,158 @@ function Zv(f, o) {
   const v = o?.match(/max_(\d+)x/i);
   return v ? `Max ${v[1]}x` : Lv(f);
 }
+function ProfileVisibilityIcon({ hidden: f = !1 }) {
+  return f
+    ? i.jsxs("svg", {
+        viewBox: "0 0 24 24",
+        width: 17,
+        height: 17,
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 2,
+        "aria-hidden": "true",
+        children: [
+          i.jsx("path", { d: "M3 3l18 18" }),
+          i.jsx("path", {
+            d: "M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.8 10.8 0 0112 4c5.5 0 9 5 9 8a8.8 8.8 0 01-2.1 3.6M6.6 6.6C4.3 8 3 10.2 3 12c0 3 3.5 8 9 8 1.5 0 2.8-.4 4-1",
+          }),
+        ],
+      })
+    : i.jsxs("svg", {
+        viewBox: "0 0 24 24",
+        width: 17,
+        height: 17,
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 2,
+        "aria-hidden": "true",
+        children: [
+          i.jsx("path", { d: "M3 12s3.5-8 9-8 9 8 9 8-3.5 8-9 8-9-8-9-8z" }),
+          i.jsx("circle", { cx: 12, cy: 12, r: 2.5 }),
+        ],
+      });
+}
+function VisibilityUndo({ item: f, onUndo: o }) {
+  return (
+    f &&
+    i.jsxs("div", {
+      className: "toast visibility-undo",
+      role: "status",
+      children: [
+        i.jsxs("span", { children: [f.name, " hidden"] }),
+        i.jsx("button", {
+          className: "btn btn-small",
+          onClick: o,
+          children: "Undo",
+        }),
+      ],
+    })
+  );
+}
+function GlobalLaunchers() {
+  const [f, o] = q.useState(null),
+    [v, d] = q.useState(null),
+    x = async (E, D, w) => {
+      (d(E), o(null));
+      try {
+        const C = await D();
+        if (C.cancelled) return;
+        o(
+          C.ok
+            ? { ok: !0, message: C.message ?? w }
+            : {
+                ok: !1,
+                message:
+                  C.error ?? "The launcher could not complete the request.",
+                helpTarget: C.helpTarget,
+              },
+        );
+      } finally {
+        d(null);
+      }
+    };
+  return i.jsxs("section", {
+    className: "global-launchers",
+    "aria-label": "New chat launchers",
+    children: [
+      i.jsxs("div", {
+        className: "global-launchers-copy",
+        children: [
+          i.jsx("strong", { children: "Start something new" }),
+          i.jsx("span", {
+            children:
+              "Claude Cowork uses the account currently active in Claude Desktop. Codex app chats use the account active in Codex; managed Claude Code profiles cannot be applied to either app.",
+          }),
+        ],
+      }),
+      i.jsxs("div", {
+        className: "global-launcher-actions",
+        children: [
+          i.jsx("button", {
+            className: "btn btn-primary",
+            disabled: v !== null,
+            title: "Uses the account currently active in Claude Desktop",
+            onClick: () =>
+              x(
+                "cowork",
+                () => window.cam.launchers.claudeCowork(),
+                "Claude Cowork opened.",
+              ),
+            children: v === "cowork" ? "Opening…" : "New Claude Cowork",
+          }),
+          i.jsx("button", {
+            className: "btn",
+            disabled: v !== null,
+            onClick: () =>
+              x(
+                "codex",
+                () => window.cam.launchers.codexChat(),
+                "New Codex chat opened.",
+              ),
+            children: v === "codex" ? "Opening…" : "New Codex chat",
+          }),
+          i.jsx("button", {
+            className: "btn",
+            disabled: v !== null,
+            onClick: () =>
+              x(
+                "vscode",
+                () => window.cam.launchers.vscodeCodex(),
+                "VS Code opened.",
+              ),
+            children: v === "vscode" ? "Opening…" : "New VS Code Codex",
+          }),
+          i.jsx("button", {
+            className: "btn",
+            disabled: v !== null,
+            onClick: () =>
+              x(
+                "project",
+                () => window.cam.launchers.vscodeProject(),
+                "Project opened in a new VS Code window.",
+              ),
+            children: v === "project" ? "Choosing…" : "VS Code project…",
+          }),
+        ],
+      }),
+      f &&
+        i.jsxs("div", {
+          className: "banner launcher-result",
+          "data-kind": f.ok ? "ok" : "warn",
+          children: [
+            i.jsx("span", { children: f.message }),
+            !f.ok &&
+              f.helpTarget &&
+              i.jsx("button", {
+                className: "btn btn-small",
+                onClick: () => window.cam.launchers.openHelp(f.helpTarget),
+                children: "Install / help ↗",
+              }),
+          ],
+        }),
+    ],
+  });
+}
 function Jo({
   state: f,
   now: o,
@@ -13439,6 +13597,8 @@ function Jo({
   onRemove: E,
   onReveal: D,
   onRefresh: w,
+  onHide: hideProfile,
+  dashboardRole: dashboardRole,
 }) {
   const [C, g] = q.useState(!1),
     B = q.useRef(null),
@@ -13454,10 +13614,14 @@ function Jo({
       () => document.removeEventListener("mousedown", k)
     );
   }, [C]);
-  const K = Zv(_.subscriptionType, _.rateLimitTier),
-    nl = [_.email, K, _.orgName].filter((k, al, W) => k && W.indexOf(k) === al),
+  const nl = [_.email].filter(Boolean),
     ol = Y ? Xv(Y.limits) : [],
-    sl = Y !== null && !Y.ok && U.estPrompts7d !== void 0;
+    roleLabel =
+      dashboardRole === "work"
+        ? "Work"
+        : dashboardRole === "personal"
+          ? "Personal"
+          : null;
   return i.jsxs("article", {
     className: "card",
     "data-status": N.kind,
@@ -13480,11 +13644,24 @@ function Jo({
               className: "badge badge-default",
               children: "Default",
             }),
+          roleLabel &&
+            i.jsx("span", {
+              className: "badge",
+              children: roleLabel,
+            }),
           i.jsx("span", {
             className: "status-label",
             "data-kind": N.kind,
             children: N.label,
           }),
+          hideProfile &&
+            i.jsx("button", {
+              className: "btn btn-icon visibility-button",
+              title: `Hide ${R.name} from profile views`,
+              "aria-label": `Hide ${R.name} from profile views`,
+              onClick: hideProfile,
+              children: i.jsx(ProfileVisibilityIcon, {}),
+            }),
           i.jsxs("div", {
             className: "menu-wrap",
             ref: B,
@@ -13554,7 +13731,7 @@ function Jo({
       i.jsx("div", {
         className: "card-sub",
         title: R.configDir,
-        children: nl.length > 0 ? nl.join(" · ") : R.configDir,
+        children: nl.length > 0 ? nl.join(" · ") : "Isolated Claude profile",
       }),
       _.loggedIn
         ? i.jsxs(i.Fragment, {
@@ -13597,63 +13774,15 @@ function Jo({
                     Y.limits.length > 0 && " — showing last known values",
                   ],
                 }),
-              sl &&
-                i.jsxs("div", {
-                  className: "estimate",
-                  children: [
-                    "Local estimate (7d): ~",
-                    U.estPrompts7d,
-                    " prompts · ~",
-                    Ko(U.estTokens7d),
-                    " tokens",
-                  ],
-                }),
-              i.jsxs("div", {
-                className: "card-meta",
-                children: [
-                  i.jsxs("span", {
-                    children: ["Last active ", Tn(U.lastActiveAt, o)],
-                  }),
-                  i.jsx("span", { className: "sep", children: "·" }),
-                  i.jsxs("span", {
-                    children: [
-                      U.sessions7d,
-                      " session",
-                      U.sessions7d === 1 ? "" : "s",
-                      " this week",
-                    ],
-                  }),
-                  Y &&
-                    Y.limits.length > 0 &&
-                    i.jsxs(i.Fragment, {
-                      children: [
-                        i.jsx("span", { className: "sep", children: "·" }),
-                        i.jsxs("span", {
-                          children: ["updated ", Tn(Y.fetchedAt, o)],
-                        }),
-                      ],
-                    }),
-                ],
-              }),
               i.jsxs("footer", {
                 className: "card-actions",
                 children: [
                   i.jsx("button", {
                     className: "btn btn-primary",
-                    onClick: () => v("claude"),
-                    children: "Open Claude",
-                  }),
-                  i.jsx("button", {
-                    className: "btn",
                     onClick: () => v("vscode"),
                     title:
-                      "If VS Code is already running, close it first so the new window picks up this account's environment",
-                    children: "VS Code",
-                  }),
-                  i.jsx("button", {
-                    className: "btn",
-                    onClick: () => v("powershell"),
-                    children: "PowerShell",
+                      "Open a folderless VS Code window for this Claude Code profile",
+                    children: "Open in VS Code",
                   }),
                   i.jsx("button", {
                     className: "btn",
@@ -13685,8 +13814,8 @@ function Jo({
                   }),
                   i.jsx("button", {
                     className: "btn",
-                    onClick: () => v("powershell"),
-                    children: "PowerShell",
+                    onClick: () => v("vscode"),
+                    children: "Open in VS Code",
                   }),
                 ],
               }),
@@ -13716,9 +13845,14 @@ function As({ children: f, onClose: o }) {
     })
   );
 }
-function Kv({ onClose: f, onDone: o }) {
+function Kv({
+  onClose: f,
+  onDone: o,
+  initialName: initialName = "",
+  dashboardRole: dashboardRole = null,
+}) {
   const [v, d] = q.useState("create"),
-    [x, E] = q.useState(""),
+    [x, E] = q.useState(initialName),
     [D, w] = q.useState(""),
     [C, g] = q.useState(!0),
     [B, R] = q.useState(null),
@@ -13727,19 +13861,19 @@ function Kv({ onClose: f, onDone: o }) {
       (Y(!0), R(null));
       try {
         if (v === "create") {
-          const N = await window.cam.createProfile(x);
+          const N = await window.cam.createProfile(x, dashboardRole);
           if (!N.ok || !N.profile) {
             R(N.error ?? "Failed to create account.");
             return;
           }
-          (C && (await window.cam.launch("login", N.profile.id)),
+          (C && (await window.cam.login(N.profile.id)),
             o(
               C
                 ? `"${N.profile.name}" created — finish signing in from the terminal that just opened.`
                 : `"${N.profile.name}" created.`,
             ));
         } else {
-          const N = await window.cam.importProfile(x, D);
+          const N = await window.cam.importProfile(x, D, dashboardRole);
           if (!N.ok || !N.profile) {
             R(N.error ?? "Failed to import account.");
             return;
@@ -13754,7 +13888,14 @@ function Kv({ onClose: f, onDone: o }) {
   return i.jsxs(As, {
     onClose: f,
     children: [
-      i.jsx("h2", { children: "Add account" }),
+      i.jsx("h2", {
+        children:
+          dashboardRole === "personal"
+            ? "Add personal Claude account"
+            : dashboardRole === "work"
+              ? "Add work Claude account"
+              : "Add account",
+      }),
       i.jsxs("div", {
         className: "segmented",
         role: "tablist",
@@ -14075,9 +14216,7 @@ function GptUsageMeter({ window: f, now: o }) {
 }
 function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
   const x = collectGptWindows(f),
-    E = f?.usage?.summary,
-    D = f?.account,
-    w = f?.rateLimits?.rateLimitResetCredits?.availableCount;
+    D = f?.account;
   return i.jsxs("section", {
     className: "card gpt-usage-card",
     "aria-label": "GPT and Codex account usage",
@@ -14135,50 +14274,6 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
             })
           : i.jsxs(i.Fragment, {
               children: [
-                i.jsxs("div", {
-                  className: "gpt-stat-grid",
-                  children: [
-                    i.jsxs("div", {
-                      className: "gpt-stat",
-                      children: [
-                        i.jsx("span", { children: "Lifetime tokens" }),
-                        i.jsx("b", {
-                          children: formatGptTokens(E?.lifetimeTokens),
-                        }),
-                      ],
-                    }),
-                    i.jsxs("div", {
-                      className: "gpt-stat",
-                      children: [
-                        i.jsx("span", { children: "Peak day" }),
-                        i.jsx("b", {
-                          children: formatGptTokens(E?.peakDailyTokens),
-                        }),
-                      ],
-                    }),
-                    i.jsxs("div", {
-                      className: "gpt-stat",
-                      children: [
-                        i.jsx("span", { children: "Current streak" }),
-                        i.jsx("b", {
-                          children:
-                            E?.currentStreakDays === null ||
-                            E?.currentStreakDays === void 0
-                              ? "—"
-                              : `${E.currentStreakDays}d`,
-                        }),
-                      ],
-                    }),
-                    Number.isFinite(w) &&
-                      i.jsxs("div", {
-                        className: "gpt-stat",
-                        children: [
-                          i.jsx("span", { children: "Usage resets" }),
-                          i.jsx("b", { children: String(w) }),
-                        ],
-                      }),
-                  ],
-                }),
                 x.length > 0
                   ? i.jsx("div", {
                       className: "meters gpt-meters",
@@ -14500,7 +14595,7 @@ function UpdateSettingsDialog({ onClose: f, onToast: o }) {
     }),
   });
 }
-function Vv({ now: f, showToast: o, onGoAccounts: v }) {
+function LegacyDashboardView({ now: f, showToast: o, onGoAccounts: v }) {
   const [d, x] = q.useState(null),
     [E, D] = q.useState(null),
     [w, C] = q.useState(!1),
@@ -14542,7 +14637,10 @@ function Vv({ now: f, showToast: o, onGoAccounts: v }) {
       }
     },
     B = async (U, H) => {
-      const N = await window.cam.launch(U, H);
+      const N =
+        U === "login"
+          ? await window.cam.login(H)
+          : await window.cam.launchVSCode(H);
       !N.ok && N.error && o(N.error);
     },
     R = async (U, H) => {
@@ -14572,7 +14670,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v }) {
                   d === null
                     ? "Loading…"
                     : _
-                      ? "Your default Claude Code account"
+                      ? "Claude Code account overview"
                       : "No default account set",
               }),
             ],
@@ -14659,7 +14757,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v }) {
                     className: "summary-row",
                     children: [
                       i.jsx(Ku, {
-                        label: "Sessions this week",
+                        label: "Weekly summary",
                         value: String(_.activity.sessions7d),
                       }),
                       i.jsx(Ku, {
@@ -14667,7 +14765,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v }) {
                         value: String(_.activity.projects),
                       }),
                       i.jsx(Ku, {
-                        label: "Last active",
+                        label: "Recent summary",
                         value: Tn(_.activity.lastActiveAt, f),
                       }),
                       i.jsx(Ku, {
@@ -14736,6 +14834,281 @@ function Vv({ now: f, showToast: o, onGoAccounts: v }) {
     ],
   });
 }
+function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
+  const [d, x] = q.useState(null),
+    [E, D] = q.useState(null),
+    [w, C] = q.useState(!1),
+    [gptUsage, setGptUsage] = q.useState(null),
+    [gptRefreshing, setGptRefreshing] = q.useState(!1),
+    [showAlerts, setShowAlerts] = q.useState(!1),
+    [showUpdates, setShowUpdates] = q.useState(!1),
+    [showPersonalAdd, setShowPersonalAdd] = q.useState(!1),
+    [undo, setUndo] = q.useState(null);
+  q.useEffect(
+    () => (window.cam.listStates().then(x), window.cam.onStateChanged(x)),
+    [],
+  );
+  q.useEffect(() => {
+    const unsubscribe = window.cam.onGptUsageChanged(setGptUsage);
+    window.cam.getGptUsage().then((state) => {
+      state
+        ? setGptUsage(state)
+        : window.cam.refreshGptUsage().then(setGptUsage);
+    });
+    return unsubscribe;
+  }, []);
+  q.useEffect(() => {
+    if (!undo) return;
+    const timer = window.setTimeout(() => setUndo(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
+  const refreshGptOnly = async () => {
+      setGptRefreshing(!0);
+      try {
+        setGptUsage(await window.cam.refreshGptUsage());
+      } finally {
+        setGptRefreshing(!1);
+      }
+    },
+    refreshAll = async () => {
+      (C(!0), setGptRefreshing(!0));
+      try {
+        const [, usageResult] = await Promise.allSettled([
+          window.cam.refreshUsage(),
+          window.cam.refreshGptUsage(),
+        ]);
+        usageResult.status === "fulfilled" && setGptUsage(usageResult.value);
+      } finally {
+        (C(!1), setGptRefreshing(!1));
+      }
+    },
+    launchProfile = async (kind, id) => {
+      const result =
+        kind === "login"
+          ? await window.cam.login(id)
+          : await window.cam.launchVSCode(id);
+      !result.ok && result.error && o(result.error);
+    },
+    setDefault = async (id, enabled) => {
+      const result = await window.cam.setDefault(enabled ? id : null);
+      !result.ok && result.error
+        ? o(result.error)
+        : o(
+            enabled
+              ? "Default set. New terminals will use this account."
+              : "Default cleared. New terminals will use ~/.claude.",
+          );
+    },
+    hideProfile = async (state) => {
+      const result = await window.cam.visibility.setHidden(
+        state.profile.id,
+        !0,
+      );
+      result.ok
+        ? setUndo({ id: state.profile.id, name: state.profile.name })
+        : o(result.error ?? "Could not hide this profile.");
+    },
+    undoHide = async () => {
+      if (!undo) return;
+      const result = await window.cam.visibility.setHidden(undo.id, !1);
+      result.ok
+        ? setUndo(null)
+        : o(result.error ?? "Could not restore this profile.");
+    },
+    visible = d?.filter((state) => !state.hidden) ?? null,
+    work =
+      visible?.find((state) => state.dashboardRole === "work") ??
+      visible?.find((state) => state.isDefault) ??
+      null,
+    personal =
+      visible?.find((state) => state.dashboardRole === "personal") ?? null,
+    allHidden = Boolean(d?.length && visible?.length === 0),
+    defaultHidden = Boolean(
+      d?.some((state) => state.isDefault && state.hidden),
+    ),
+    renderCard = (state, role) =>
+      i.jsx(Jo, {
+        state,
+        now: f,
+        dashboardRole: role,
+        onLaunch: (kind) => launchProfile(kind, state.profile.id),
+        onSetDefault: (enabled) => setDefault(state.profile.id, enabled),
+        onRename: () => D({ type: "rename", state }),
+        onRemove: () => D({ type: "remove", state }),
+        onReveal: () => window.cam.revealFolder(state.profile.id),
+        onRefresh: () => window.cam.refreshUsage(state.profile.id),
+        onHide: () => hideProfile(state),
+      });
+  return i.jsxs("div", {
+    className: "view",
+    children: [
+      i.jsxs("header", {
+        className: "view-head",
+        children: [
+          i.jsx("h1", { children: "Dashboard" }),
+          i.jsxs("div", {
+            className: "view-actions",
+            children: [
+              i.jsx("button", {
+                className: "btn",
+                onClick: () => setShowAlerts(!0),
+                children: "🔔 Alerts",
+              }),
+              i.jsx("button", {
+                className: "btn",
+                onClick: () => setShowUpdates(!0),
+                children: "Updates",
+              }),
+              i.jsx("button", {
+                className: "btn",
+                onClick: refreshAll,
+                disabled: w,
+                children: w ? "Refreshing…" : "↻ Refresh",
+              }),
+            ],
+          }),
+        ],
+      }),
+      d === null
+        ? i.jsx("div", {
+            className: "empty",
+            children: i.jsx("p", { children: "Loading accounts…" }),
+          })
+        : d.length === 0
+          ? i.jsxs("div", {
+              className: "empty",
+              children: [
+                i.jsx("h2", { children: "No accounts yet" }),
+                i.jsx("p", {
+                  children:
+                    "Add an isolated Claude Code profile to monitor its usage and open it in VS Code.",
+                }),
+                i.jsx("button", {
+                  className: "btn btn-primary",
+                  onClick: v,
+                  children: "Add an account →",
+                }),
+              ],
+            })
+          : allHidden
+            ? i.jsxs("div", {
+                className: "empty",
+                children: [
+                  i.jsx("h2", { children: "All profiles are hidden" }),
+                  i.jsx("p", {
+                    children:
+                      "Usage refresh continues in the background. Show profiles again from Settings.",
+                  }),
+                  i.jsx("button", {
+                    className: "btn btn-primary",
+                    onClick: onGoSettings,
+                    children: "Manage profile visibility",
+                  }),
+                ],
+              })
+            : i.jsxs(i.Fragment, {
+                children: [
+                  defaultHidden &&
+                    i.jsxs("div", {
+                      className: "banner",
+                      "data-kind": "warn",
+                      children: [
+                        i.jsx("span", {
+                          children:
+                            "The default Claude Code profile is hidden; no substitute is shown as the default.",
+                        }),
+                        i.jsx("button", {
+                          className: "btn btn-small",
+                          onClick: onGoSettings,
+                          children: "Manage visibility",
+                        }),
+                      ],
+                    }),
+                  i.jsxs("div", {
+                    className: "claude-dashboard-grid",
+                    children: [
+                      work
+                        ? renderCard(work, "work")
+                        : i.jsxs("section", {
+                            className: "empty compact-empty",
+                            children: [
+                              i.jsx("h2", { children: "Work Claude" }),
+                              i.jsx("p", {
+                                children:
+                                  "No visible work/default Claude Code profile is assigned.",
+                              }),
+                              i.jsx("button", {
+                                className: "btn",
+                                onClick: v,
+                                children: "Choose an account",
+                              }),
+                            ],
+                          }),
+                      personal
+                        ? renderCard(personal, "personal")
+                        : i.jsxs("section", {
+                            className: "empty compact-empty",
+                            children: [
+                              i.jsx("h2", { children: "Personal Claude" }),
+                              i.jsx("p", {
+                                children:
+                                  "Optional: add one separate personal Claude Code profile.",
+                              }),
+                              i.jsx("button", {
+                                className: "btn",
+                                onClick: () => setShowPersonalAdd(!0),
+                                children: "+ Add personal profile",
+                              }),
+                            ],
+                          }),
+                    ],
+                  }),
+                ],
+              }),
+      i.jsx(GptUsageCard, {
+        usage: gptUsage,
+        now: f,
+        refreshing: gptRefreshing,
+        onRefresh: refreshGptOnly,
+      }),
+      i.jsx(GlobalLaunchers, {}),
+      E?.type === "rename" &&
+        i.jsx($o, {
+          state: E.state,
+          onClose: () => D(null),
+          onDone: () => D(null),
+        }),
+      E?.type === "remove" &&
+        i.jsx(Wo, {
+          state: E.state,
+          onClose: () => D(null),
+          onDone: (message) => {
+            (D(null), o(message));
+          },
+        }),
+      showAlerts &&
+        i.jsx(AlertSettingsDialog, {
+          onClose: () => setShowAlerts(!1),
+          onSaved: o,
+        }),
+      showUpdates &&
+        i.jsx(UpdateSettingsDialog, {
+          onClose: () => setShowUpdates(!1),
+          onToast: o,
+        }),
+      showPersonalAdd &&
+        i.jsx(Kv, {
+          initialName: "Personal",
+          dashboardRole: "personal",
+          onClose: () => setShowPersonalAdd(!1),
+          onDone: (message) => {
+            (setShowPersonalAdd(!1), o(message));
+          },
+        }),
+      i.jsx(VisibilityUndo, { item: undo, onUndo: undoHide }),
+    ],
+  });
+}
 function Ku({ label: f, value: o, hint: v }) {
   return i.jsxs("div", {
     className: "summary-tile",
@@ -14746,15 +15119,34 @@ function Ku({ label: f, value: o, hint: v }) {
     ],
   });
 }
-function kv({ now: f, showToast: o }) {
+function kv({ now: f, showToast: o, onGoSettings }) {
   const [v, d] = q.useState(null),
     [x, E] = q.useState(""),
     [D, w] = q.useState(null),
-    [C, g] = q.useState(!1);
+    [C, g] = q.useState(!1),
+    [undo, setUndo] = q.useState(null),
+    [otherAccountsLayout, setOtherAccountsLayout] = q.useState("grid");
   q.useEffect(
     () => (window.cam.listStates().then(d), window.cam.onStateChanged(d)),
     [],
   );
+  q.useEffect(() => {
+    if (!undo) return;
+    const timer = window.setTimeout(() => setUndo(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
+  q.useEffect(() => {
+    let active = !0;
+    window.cam.otherAccountsLayout
+      .get()
+      .then((layout) => {
+        if (active) setOtherAccountsLayout(layout === "wide" ? "wide" : "grid");
+      })
+      .catch(() => {});
+    return () => {
+      active = !1;
+    };
+  }, []);
   const B = async () => {
       g(!0);
       try {
@@ -14764,7 +15156,10 @@ function kv({ now: f, showToast: o }) {
       }
     },
     R = async (N, K) => {
-      const nl = await window.cam.launch(N, K);
+      const nl =
+        N === "login"
+          ? await window.cam.login(K)
+          : await window.cam.launchVSCode(K);
       !nl.ok && nl.error && o(nl.error);
     },
     _ = async (N, K) => {
@@ -14783,7 +15178,45 @@ function kv({ now: f, showToast: o }) {
         ? o(`Exported account list to ${N.path}`)
         : N.error && o(N.error);
     },
-    U = q.useMemo(() => v?.filter((N) => !N.isDefault) ?? null, [v]),
+    hideProfile = async (state) => {
+      const result = await window.cam.visibility.setHidden(
+        state.profile.id,
+        !0,
+      );
+      result.ok
+        ? setUndo({ id: state.profile.id, name: state.profile.name })
+        : o(result.error ?? "Could not hide this profile.");
+    },
+    undoHide = async () => {
+      if (!undo) return;
+      const result = await window.cam.visibility.setHidden(undo.id, !1);
+      result.ok
+        ? setUndo(null)
+        : o(result.error ?? "Could not restore this profile.");
+    },
+    changeOtherAccountsLayout = async (layout) => {
+      if (layout === otherAccountsLayout) return;
+      const previous = otherAccountsLayout;
+      setOtherAccountsLayout(layout);
+      try {
+        const result = await window.cam.otherAccountsLayout.set(layout);
+        if (!result.ok) {
+          setOtherAccountsLayout(previous);
+          o(result.error ?? "Could not save the account layout.");
+        }
+      } catch {
+        setOtherAccountsLayout(previous);
+        o("Could not save the account layout.");
+      }
+    },
+    rawOthers = q.useMemo(
+      () => v?.filter((N) => !N.isDefault && !N.dashboardRole) ?? null,
+      [v],
+    ),
+    U = q.useMemo(
+      () => rawOthers?.filter((N) => !N.hidden) ?? null,
+      [rawOthers],
+    ),
     H = q.useMemo(() => {
       if (!U) return null;
       const N = x.trim().toLowerCase();
@@ -14793,7 +15226,6 @@ function kv({ now: f, showToast: o }) {
               (nl) =>
                 nl.profile.name.toLowerCase().includes(N) ||
                 (nl.identity.email ?? "").toLowerCase().includes(N) ||
-                (nl.identity.orgName ?? "").toLowerCase().includes(N) ||
                 nl.profile.configDir.toLowerCase().includes(N),
             )
           : U),
@@ -14811,7 +15243,7 @@ function kv({ now: f, showToast: o }) {
               i.jsx("p", {
                 className: "view-sub",
                 children: U
-                  ? `${U.length} other Claude Code account${U.length === 1 ? "" : "s"} — your default account is on the Dashboard`
+                  ? `${U.length} visible additional Claude Code profile${U.length === 1 ? "" : "s"}`
                   : "Loading…",
               }),
             ],
@@ -14828,6 +15260,39 @@ function kv({ now: f, showToast: o }) {
                   onChange: (N) => E(N.target.value),
                   "aria-label": "Search accounts",
                 }),
+              }),
+              i.jsxs("div", {
+                className: "layout-segmented",
+                role: "group",
+                "aria-label": "Other Accounts layout",
+                children: [
+                  i.jsxs("button", {
+                    type: "button",
+                    className: "layout-segment",
+                    "data-selected":
+                      otherAccountsLayout === "grid" ? "" : void 0,
+                    "aria-pressed": otherAccountsLayout === "grid",
+                    title: "Show accounts in a responsive card grid",
+                    onClick: () => changeOtherAccountsLayout("grid"),
+                    children: [
+                      i.jsx("span", { "aria-hidden": "true", children: "▦" }),
+                      "Cards",
+                    ],
+                  }),
+                  i.jsxs("button", {
+                    type: "button",
+                    className: "layout-segment",
+                    "data-selected":
+                      otherAccountsLayout === "wide" ? "" : void 0,
+                    "aria-pressed": otherAccountsLayout === "wide",
+                    title: "Show one full-width account per row",
+                    onClick: () => changeOtherAccountsLayout("wide"),
+                    children: [
+                      i.jsx("span", { "aria-hidden": "true", children: "☰" }),
+                      "Full width",
+                    ],
+                  }),
+                ],
               }),
               i.jsx("button", {
                 className: "btn",
@@ -14858,7 +15323,7 @@ function kv({ now: f, showToast: o }) {
             className: "empty",
             children: i.jsx("p", { children: "Loading accounts…" }),
           })
-        : H.length === 0 && U && U.length > 0
+        : H.length === 0 && U && U.length > 0 && x.trim().length > 0
           ? i.jsxs("div", {
               className: "empty",
               children: [
@@ -14866,74 +15331,99 @@ function kv({ now: f, showToast: o }) {
                 i.jsxs("p", { children: ["No accounts match “", x, "”."] }),
               ],
             })
-          : H.length === 0 && v && v.length > 0
+          : H.length === 0 &&
+              rawOthers &&
+              rawOthers.length > 0 &&
+              U?.length === 0
             ? i.jsxs("div", {
                 className: "empty",
                 children: [
-                  i.jsx("h2", { children: "No other accounts" }),
+                  i.jsx("h2", {
+                    children: "All additional profiles are hidden",
+                  }),
                   i.jsx("p", {
                     children:
-                      "Your default account lives on the Dashboard. Add another account to see it here.",
+                      "Search does not reveal hidden profiles. Manage visibility from Settings.",
                   }),
-                  i.jsx("div", {
-                    className: "empty-actions",
-                    children: i.jsx("button", {
-                      className: "btn btn-primary",
-                      onClick: () => w({ type: "add" }),
-                      children: "+ Add account",
-                    }),
+                  i.jsx("button", {
+                    className: "btn btn-primary",
+                    onClick: onGoSettings,
+                    children: "Manage profile visibility",
                   }),
                 ],
               })
-            : H.length === 0
+            : H.length === 0 && v && v.length > 0
               ? i.jsxs("div", {
                   className: "empty",
                   children: [
-                    i.jsx("h2", { children: "No accounts yet" }),
-                    i.jsxs("p", {
-                      children: [
-                        "Each account is an isolated Claude Code profile folder (its own ",
-                        i.jsx("code", { children: "CLAUDE_CONFIG_DIR" }),
-                        ").",
-                      ],
+                    i.jsx("h2", { children: "No other accounts" }),
+                    i.jsx("p", {
+                      children:
+                        "Your default account lives on the Dashboard. Add another account to see it here.",
                     }),
                     i.jsx("div", {
                       className: "empty-actions",
                       children: i.jsx("button", {
                         className: "btn btn-primary",
                         onClick: () => w({ type: "add" }),
-                        children: "+ Add your first account",
+                        children: "+ Add account",
                       }),
                     }),
                   ],
                 })
-              : i.jsx("div", {
-                  className: "grid",
-                  children: H.map((N) =>
-                    i.jsx(
-                      Jo,
-                      {
-                        state: N,
-                        now: f,
-                        onLaunch: (K) => {
-                          R(K, N.profile.id);
+              : H.length === 0
+                ? i.jsxs("div", {
+                    className: "empty",
+                    children: [
+                      i.jsx("h2", { children: "No accounts yet" }),
+                      i.jsxs("p", {
+                        children: [
+                          "Each account is an isolated Claude Code profile folder (its own ",
+                          i.jsx("code", { children: "CLAUDE_CONFIG_DIR" }),
+                          ").",
+                        ],
+                      }),
+                      i.jsx("div", {
+                        className: "empty-actions",
+                        children: i.jsx("button", {
+                          className: "btn btn-primary",
+                          onClick: () => w({ type: "add" }),
+                          children: "+ Add your first account",
+                        }),
+                      }),
+                    ],
+                  })
+                : i.jsx("div", {
+                    className:
+                      otherAccountsLayout === "wide"
+                        ? "grid other-accounts-grid other-accounts-grid-wide"
+                        : "grid other-accounts-grid",
+                    children: H.map((N) =>
+                      i.jsx(
+                        Jo,
+                        {
+                          state: N,
+                          now: f,
+                          onLaunch: (K) => {
+                            R(K, N.profile.id);
+                          },
+                          onSetDefault: (K) => {
+                            _(N.profile.id, K);
+                          },
+                          onRename: () => w({ type: "rename", state: N }),
+                          onRemove: () => w({ type: "remove", state: N }),
+                          onReveal: () => {
+                            window.cam.revealFolder(N.profile.id);
+                          },
+                          onRefresh: () => {
+                            window.cam.refreshUsage(N.profile.id);
+                          },
+                          onHide: () => hideProfile(N),
                         },
-                        onSetDefault: (K) => {
-                          _(N.profile.id, K);
-                        },
-                        onRename: () => w({ type: "rename", state: N }),
-                        onRemove: () => w({ type: "remove", state: N }),
-                        onReveal: () => {
-                          window.cam.revealFolder(N.profile.id);
-                        },
-                        onRefresh: () => {
-                          window.cam.refreshUsage(N.profile.id);
-                        },
-                      },
-                      N.profile.id,
+                        N.profile.id,
+                      ),
                     ),
-                  ),
-                }),
+                  }),
       D?.type === "add" &&
         i.jsx(Kv, {
           onClose: () => w(null),
@@ -14955,6 +15445,7 @@ function kv({ now: f, showToast: o }) {
             (w(null), o(N));
           },
         }),
+      i.jsx(VisibilityUndo, { item: undo, onUndo: undoHide }),
     ],
   });
 }
@@ -18536,6 +19027,137 @@ function AutomationSessionsView({ showToast: f }) {
     ],
   });
 }
+function ProfileVisibilitySettings({ showToast: f }) {
+  const [o, v] = q.useState(null),
+    [d, x] = q.useState(null);
+  q.useEffect(
+    () => (window.cam.listStates().then(v), window.cam.onStateChanged(v)),
+    [],
+  );
+  const E = async (state, hidden) => {
+      x(state.profile.id);
+      try {
+        const result = await window.cam.visibility.setHidden(
+          state.profile.id,
+          hidden,
+        );
+        !result.ok && f(result.error ?? "Could not update profile visibility.");
+      } finally {
+        x(null);
+      }
+    },
+    D = async () => {
+      x("all");
+      try {
+        const result = await window.cam.visibility.showAll();
+        result.ok
+          ? f("All profiles are visible.")
+          : f(result.error ?? "Could not show all profiles.");
+      } finally {
+        x(null);
+      }
+    },
+    hiddenCount = o?.filter((state) => state.hidden).length ?? 0,
+    visibleCount = o ? o.length - hiddenCount : 0;
+  return i.jsxs("div", {
+    className: "view settings-view",
+    children: [
+      i.jsx("header", {
+        className: "view-head",
+        children: i.jsx("h1", { children: "Settings" }),
+      }),
+      i.jsxs("section", {
+        className: "panel visibility-settings",
+        children: [
+          i.jsxs("div", {
+            className: "panel-head-row",
+            children: [
+              i.jsxs("div", {
+                children: [
+                  i.jsx("h2", {
+                    className: "panel-title",
+                    children: "Profile visibility",
+                  }),
+                  i.jsx("p", {
+                    className: "view-sub",
+                    children: o
+                      ? `${visibleCount} of ${o.length} visible · ${hiddenCount} hidden`
+                      : "Loading profiles…",
+                  }),
+                ],
+              }),
+              hiddenCount > 0 &&
+                i.jsx("button", {
+                  className: "btn",
+                  disabled: d !== null,
+                  onClick: D,
+                  children: d === "all" ? "Showing…" : "Show all profiles",
+                }),
+            ],
+          }),
+          i.jsx("p", {
+            className: "hint",
+            children:
+              "Hidden profiles stay configured and continue refreshing usage. They are omitted from the Dashboard and Other Accounts, including search results.",
+          }),
+          o === null
+            ? i.jsx("p", { children: "Loading…" })
+            : o.length === 0
+              ? i.jsx("div", {
+                  className: "empty compact-empty",
+                  children: i.jsx("p", { children: "No profiles to manage." }),
+                })
+              : i.jsx("div", {
+                  className: "visibility-list",
+                  children: [...o]
+                    .sort((a, b) =>
+                      a.profile.name.localeCompare(b.profile.name),
+                    )
+                    .map((state) =>
+                      i.jsxs(
+                        "label",
+                        {
+                          className: "visibility-row",
+                          children: [
+                            i.jsx("span", {
+                              className: "visibility-row-icon",
+                              children: i.jsx(ProfileVisibilityIcon, {
+                                hidden: state.hidden,
+                              }),
+                            }),
+                            i.jsxs("span", {
+                              className: "visibility-row-copy",
+                              children: [
+                                i.jsx("strong", {
+                                  children: state.profile.name,
+                                }),
+                                i.jsx("span", {
+                                  children: state.hidden
+                                    ? "Hidden from profile views"
+                                    : "Visible in profile views",
+                                }),
+                              ],
+                            }),
+                            i.jsx("input", {
+                              type: "checkbox",
+                              role: "switch",
+                              checked: !state.hidden,
+                              disabled: d !== null,
+                              "aria-label": `Show ${state.profile.name}`,
+                              onChange: (event) =>
+                                E(state, !event.target.checked),
+                            }),
+                          ],
+                        },
+                        state.profile.id,
+                      ),
+                    ),
+                }),
+        ],
+      }),
+    ],
+  });
+}
 function ry(f) {
   return f.startsWith("provider:") ? f.slice(9) : null;
 }
@@ -18587,12 +19209,20 @@ function hy() {
       }),
       window.cam
         .listStates()
-        .then((F) => H(F.filter((Ml) => !Ml.isDefault).length)));
+        .then((F) =>
+          H(
+            F.filter((Ml) => !Ml.isDefault && !Ml.dashboardRole && !Ml.hidden)
+              .length,
+          ),
+        ));
     const P = window.cam.apiKeys.onChanged((F) => {
         (R(F), ol(), w(Date.now()));
       }),
       Xl = window.cam.onStateChanged((F) =>
-        H(F.filter((Ml) => !Ml.isDefault).length),
+        H(
+          F.filter((Ml) => !Ml.isDefault && !Ml.dashboardRole && !Ml.hidden)
+            .length,
+        ),
       );
     return () => {
       (P(), Xl());
@@ -18627,8 +19257,16 @@ function hy() {
               now: D,
               showToast: sl,
               onGoAccounts: () => o("accounts"),
+              onGoSettings: () => o("settings"),
             }),
-          f === "accounts" && i.jsx(kv, { now: D, showToast: sl }),
+          f === "accounts" &&
+            i.jsx(kv, {
+              now: D,
+              showToast: sl,
+              onGoSettings: () => o("settings"),
+            }),
+          f === "settings" &&
+            i.jsx(ProfileVisibilitySettings, { showToast: sl }),
           f === "skills-sync" && i.jsx(Jv, { showToast: sl }),
           f === "automation-sessions" &&
             i.jsx(AutomationSessionsView, { showToast: sl }),

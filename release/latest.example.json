@@ -1,7 +1,7 @@
 {
-  "version": "1.4.1",
-  "downloadUrl": "https://downloads.example.com/AI-Account-Manager-Setup-1.4.1.exe",
+  "version": "1.7.0",
+  "downloadUrl": "https://downloads.example.com/AI-Account-Manager-Setup-1.7.0.exe",
   "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "publishedAt": "2026-08-03T00:00:00.000Z",
+  "publishedAt": "2026-09-14T00:00:00.000Z",
   "notes": "Example only. Generate the real file with npm run release:manifest."
 }

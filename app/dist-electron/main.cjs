@@ -44,6 +44,29 @@ var {
   redactText,
   sanitizeAutomationSettings,
 } = require("./automation-domain.cjs");
+var {
+  CLAUDE_COWORK_URL,
+  CLAUDE_DEEP_LINK_HELP_URL,
+  CODEX_COMMAND_HELP_URL,
+  CODEX_NEW_CHAT_URL,
+  VSCODE_CODEX_PANEL_URL,
+  buildVsCodeWindowArgs,
+  extensionStateFromStorage,
+  normalizeHiddenProfileIds,
+  normalizeOtherAccountsLayout,
+  parseExtensionList,
+  planVsCodeCodexLaunch,
+  setProfileHidden,
+  validateExternalTarget,
+  validateProjectDirectory,
+} = require("./launcher-domain.cjs");
+var {
+  SerialRefreshCoordinator,
+  exponentialBackoffMs,
+  mergeProfileSnapshots,
+  parseRetryAfter,
+  retainFailedSnapshot,
+} = require("./usage-reliability-domain.cjs");
 
 function sanitizeReviewedDiagnosticReport(input) {
   if (!input || typeof input !== "object" || !Array.isArray(input.elements)) {
@@ -95,7 +118,7 @@ function isHomeDefaultDir(dir) {
 }
 function appDataDir() {
   // DO NOT rename "ClaudeAccountManager" to match the current product name.
-  // The app was rebranded to AI Account Manager, but every existing install's
+  // Keep the longstanding data directory across product and version changes.
   // accounts, settings, usage history and DPAPI-encrypted API key vault live
   // in %APPDATA%\ClaudeAccountManager. Changing this string orphans all of it
   // silently - the app would just look freshly installed. If a rename is ever
@@ -130,7 +153,19 @@ function apiSnapshotsFile() {
 function writeJsonAtomic(file, value) {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf8");
-  fs.renameSync(tmp, file);
+  try {
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    // Windows cannot always rename over an existing or briefly-read file.
+    // Copying the complete temp file still prevents truncated JSON and avoids
+    // stranding every successful refresh in a process-specific temp file.
+    try {
+      fs.copyFileSync(tmp, file);
+      fs.unlinkSync(tmp);
+    } catch {
+      throw err;
+    }
+  }
 }
 function readJson(file) {
   try {
@@ -138,6 +173,29 @@ function readJson(file) {
   } catch {
     return null;
   }
+}
+function readNewestJson(file) {
+  const dir = path.dirname(file);
+  const prefix = `${path.basename(file)}.`;
+  const candidates = [file];
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith(prefix) && name.endsWith(".tmp")) {
+        candidates.push(path.join(dir, name));
+      }
+    }
+  } catch {}
+  const values = candidates
+    .filter((candidate) => fs.existsSync(candidate))
+    .map((candidate) => ({
+      candidate,
+      modified: fs.statSync(candidate).mtimeMs,
+    }))
+    .sort((a, b) => a.modified - b.modified)
+    .map(({ candidate }) => readJson(candidate))
+    .filter((value) => value && typeof value === "object");
+  if (values.length === 0) return null;
+  return mergeProfileSnapshots(values);
 }
 
 // electron/lib/accountReader.ts
@@ -307,6 +365,16 @@ function ensureFileLinked(profileDir, name) {
   }
   fs3.linkSync(target, link);
 }
+function logSharedStateFailure(_profileDir, kind, name, err) {
+  try {
+    const detail = String(err?.code || err?.name || "Error").slice(0, 80);
+    fs3.appendFileSync(
+      path3.join(appDataDir(), "launcher-errors.log"),
+      `${/* @__PURE__ */ new Date().toISOString()} sharedState ${kind} "${String(name).slice(0, 80)}": ${detail}\n`,
+      "utf8",
+    );
+  } catch {}
+}
 function linkSharedState(profileDir) {
   if (isHomeDefaultDir(profileDir)) return;
   fs3.mkdirSync(profileDir, { recursive: true });
@@ -314,20 +382,14 @@ function linkSharedState(profileDir) {
     try {
       ensureDirLinked(profileDir, name);
     } catch (err) {
-      console.error(
-        `sharedState: failed to link dir "${name}" for ${profileDir}:`,
-        err,
-      );
+      logSharedStateFailure(profileDir, "directory", name, err);
     }
   }
   for (const name of SHARED_FILES) {
     try {
       ensureFileLinked(profileDir, name);
     } catch (err) {
-      console.error(
-        `sharedState: failed to link file "${name}" for ${profileDir}:`,
-        err,
-      );
+      logSharedStateFailure(profileDir, "file", name, err);
     }
   }
 }
@@ -370,6 +432,366 @@ function findOnPath(exe) {
     }
   }
   return null;
+}
+function vsCodeExecutable() {
+  if (process.env.VSCODE_CLI_PATH && fileExists(process.env.VSCODE_CLI_PATH)) {
+    const configured = process.env.VSCODE_CLI_PATH;
+    if (path4.extname(configured).toLowerCase() === ".exe") return configured;
+  }
+  const candidates = [
+    path4.join(
+      process.env.LOCALAPPDATA ?? "",
+      "Programs",
+      "Microsoft VS Code",
+      "Code.exe",
+    ),
+    path4.join(process.env.ProgramFiles ?? "", "Microsoft VS Code", "Code.exe"),
+    path4.join(
+      process.env["ProgramFiles(x86)"] ?? "",
+      "Microsoft VS Code",
+      "Code.exe",
+    ),
+  ];
+  const cli = findOnPath("code");
+  if (cli) candidates.push(path4.join(path4.dirname(cli), "..", "Code.exe"));
+  return candidates.find(fileExists) ?? null;
+}
+function cleanElectronEnv(overrides = {}) {
+  const env = { ...process.env, ...overrides };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.NODE_OPTIONS;
+  return env;
+}
+function vsCodeCliScript(executable) {
+  const direct = path4.join(
+    path4.dirname(executable),
+    "resources",
+    "app",
+    "out",
+    "cli.js",
+  );
+  if (fileExists(direct)) return direct;
+  const installRoot = path4.dirname(executable);
+  const commandShim = path4.join(installRoot, "bin", "code.cmd");
+  try {
+    const shim = fs4.readFileSync(commandShim, "utf8");
+    const match = shim.match(
+      /\.\.\\([^"\r\n]+\\resources\\app\\out\\cli\.js)/i,
+    );
+    if (match) {
+      const fromShim = path4.resolve(installRoot, match[1]);
+      if (fileExists(fromShim)) return fromShim;
+    }
+  } catch {}
+  try {
+    return (
+      fs4
+        .readdirSync(installRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) =>
+          path4.join(
+            installRoot,
+            entry.name,
+            "resources",
+            "app",
+            "out",
+            "cli.js",
+          ),
+        )
+        .filter(fileExists)
+        .sort((a, b) => fs4.statSync(b).mtimeMs - fs4.statSync(a).mtimeMs)[0] ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+function runVsCodeCli(executable, args, timeout = 15e3) {
+  const script = vsCodeCliScript(executable);
+  if (!script) {
+    return { ok: false, stdout: "", error: "VS Code CLI was not found." };
+  }
+  const result = (0, import_node_child_process2.spawnSync)(
+    executable,
+    [script, ...args],
+    {
+      cwd: os4.homedir(),
+      env: cleanElectronEnv({ ELECTRON_RUN_AS_NODE: "1" }),
+      encoding: "utf8",
+      windowsHide: true,
+      shell: false,
+      timeout,
+    },
+  );
+  return {
+    ok: !result.error && result.status === 0,
+    stdout: result.stdout ?? "",
+    error:
+      result.error?.message ??
+      (result.status === 0
+        ? null
+        : `VS Code CLI exited with ${result.status}.`),
+  };
+}
+function readVSCodeExtensionStorageState(extensionId) {
+  const dbPath = path4.join(
+    process.env.APPDATA ?? path4.join(os4.homedir(), "AppData", "Roaming"),
+    "Code",
+    "User",
+    "globalStorage",
+    "state.vscdb",
+  );
+  if (!fileExists(dbPath)) {
+    return { installedBefore: false, disabled: false, enabled: false };
+  }
+  let db;
+  try {
+    const { DatabaseSync } = require("node:sqlite");
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const rows = db
+      .prepare(
+        "SELECT key, value FROM ItemTable WHERE key = '__$__targetStorageMarker' OR lower(key) LIKE '%disabled%'",
+      )
+      .all();
+    const marker = rows.find((row) => row.key === "__$__targetStorageMarker");
+    const disabledValues = rows
+      .filter((row) => String(row.key).toLowerCase().includes("disabled"))
+      .map((row) => row.value);
+    return extensionStateFromStorage(
+      marker?.value,
+      disabledValues,
+      extensionId,
+    );
+  } catch {
+    return { installedBefore: false, disabled: false, enabled: false };
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
+}
+function latestExtensionPackage(extensionId) {
+  const root = path4.join(os4.homedir(), ".vscode", "extensions");
+  try {
+    return fs4
+      .readdirSync(root, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name.toLowerCase().startsWith(`${extensionId.toLowerCase()}-`),
+      )
+      .map((entry) => path4.join(root, entry.name))
+      .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))[0];
+  } catch {
+    return null;
+  }
+}
+function inspectCodexVSCodeExtension(executable) {
+  const id = "openai.chatgpt";
+  const listed = runVsCodeCli(executable, [
+    "--list-extensions",
+    "--show-versions",
+  ]);
+  const installed = listed.ok && parseExtensionList(listed.stdout).has(id);
+  const packageRoot = latestExtensionPackage(id);
+  let version = null;
+  let adapterSourcePresent = false;
+  try {
+    const manifest = JSON.parse(
+      fs4.readFileSync(path4.join(packageRoot, "package.json"), "utf8"),
+    );
+    version = String(manifest.version ?? "");
+    const commands = new Set(
+      (manifest.contributes?.commands ?? []).map((item) => item.command),
+    );
+    const source = fs4.readFileSync(
+      path4.join(packageRoot, manifest.main),
+      "utf8",
+    );
+    adapterSourcePresent =
+      commands.has("chatgpt.newChat") &&
+      commands.has("chatgpt.newCodexPanel") &&
+      source.includes("registerUriHandler") &&
+      source.includes("/extension/panel/new");
+  } catch {}
+  const storage = readVSCodeExtensionStorageState(id);
+  return {
+    id,
+    installed: installed || Boolean(packageRoot),
+    enabled: storage.enabled,
+    disabled: storage.disabled,
+    version,
+    adapterSourcePresent,
+    // The extension currently contains a private URI handler, but there is no
+    // documented stable CLI/URI contract for opening a panel in the new window.
+    // Stay on the truthful extra-click path until that contract is supported
+    // and can be exercised by the live UI smoke suite.
+    panelAdapterVerified: false,
+  };
+}
+function spawnDetachedExecutable(executable, args, options = {}) {
+  const child = (0, import_node_child_process2.spawn)(executable, args, {
+    cwd: options.cwd ?? os4.homedir(),
+    env: options.env ?? cleanElectronEnv(),
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    shell: false,
+  });
+  child.unref();
+}
+async function openAllowedExternal(target, failureMessage) {
+  try {
+    const allowedTarget = validateExternalTarget(target);
+    await import_electron4.shell.openExternal(allowedTarget);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        failureMessage ?? `Could not open the requested app: ${err.message}`,
+    };
+  }
+}
+async function launchClaudeCowork() {
+  const result = await openAllowedExternal(
+    CLAUDE_COWORK_URL,
+    "Claude Desktop did not accept the Cowork link. Install or update Claude Desktop, then try again.",
+  );
+  return result.ok
+    ? { ...result, globalAccount: true }
+    : {
+        ...result,
+        code: "claude-desktop-unavailable",
+        helpTarget: CLAUDE_DEEP_LINK_HELP_URL,
+      };
+}
+async function launchCodexChat() {
+  const result = await openAllowedExternal(
+    CODEX_NEW_CHAT_URL,
+    "The Codex app did not accept the new-chat link. Install or update Codex, then try again.",
+  );
+  return result.ok
+    ? result
+    : {
+        ...result,
+        code: "codex-app-unavailable",
+        helpTarget: CODEX_COMMAND_HELP_URL,
+      };
+}
+function launchVsCodeCodex(folder = null) {
+  const executable = vsCodeExecutable();
+  const extension = executable
+    ? inspectCodexVSCodeExtension(executable)
+    : { installed: false, enabled: false, panelAdapterVerified: false };
+  const plan = planVsCodeCodexLaunch({ executable, extension, folder });
+  if (!plan.ok) return plan;
+  try {
+    spawnDetachedExecutable(executable, plan.args);
+    return { ...plan, extensionVersion: extension.version };
+  } catch (err) {
+    return {
+      ok: false,
+      code: "vscode-launch-failed",
+      error: `Could not open VS Code: ${err.message}`,
+      helpTarget: CODEX_COMMAND_HELP_URL,
+    };
+  }
+}
+function vsCodeProfileName(profile) {
+  const label =
+    profile.dashboardRole === "work"
+      ? "Work"
+      : profile.dashboardRole === "personal"
+        ? "Personal"
+        : profile.name;
+  return `Claude ${String(label).replace(/"/g, "'").trim()}`;
+}
+function writeVSCodeProfileSettings(profileName, profile) {
+  try {
+    const codeUserDir = path4.join(
+      process.env.APPDATA ?? path4.join(os4.homedir(), "AppData", "Roaming"),
+      "Code",
+      "User",
+    );
+    const storageFile = path4.join(
+      codeUserDir,
+      "globalStorage",
+      "storage.json",
+    );
+    if (!fileExists(storageFile)) return false;
+    const storage = JSON.parse(fs4.readFileSync(storageFile, "utf8"));
+    const entry = (storage.userDataProfiles ?? []).find(
+      (candidate) =>
+        candidate.name?.toLowerCase() === profileName.toLowerCase(),
+    );
+    if (!entry?.location || entry.location.startsWith("builtin/")) return false;
+    const profileDir = path4.join(codeUserDir, "profiles", entry.location);
+    const profileSettingsFile = path4.join(profileDir, "settings.json");
+    fs4.mkdirSync(profileDir, { recursive: true });
+    let settings = {};
+    if (fileExists(profileSettingsFile)) {
+      settings = JSON.parse(fs4.readFileSync(profileSettingsFile, "utf8"));
+    }
+    const configDir = profile.configDir || canonicalDir();
+    const variables = Array.isArray(settings["claudeCode.environmentVariables"])
+      ? settings["claudeCode.environmentVariables"].filter(
+          (item) => item?.name !== "CLAUDE_CONFIG_DIR",
+        )
+      : [];
+    variables.push({ name: "CLAUDE_CONFIG_DIR", value: configDir });
+    settings["claudeCode.environmentVariables"] = variables;
+    settings["terminal.integrated.env.windows"] = {
+      ...(settings["terminal.integrated.env.windows"] ?? {}),
+      CLAUDE_CONFIG_DIR: configDir,
+    };
+    fs4.writeFileSync(
+      profileSettingsFile,
+      `${JSON.stringify(settings, null, 2)}\n`,
+      "utf8",
+    );
+    return true;
+  } catch (err) {
+    logSharedStateFailure(
+      profile.configDir,
+      "VS Code profile",
+      profile.id,
+      err,
+    );
+    return false;
+  }
+}
+function installClaudeVSCodeExtension(executable, profileName, profile) {
+  const result = runVsCodeCli(
+    executable,
+    ["--profile", profileName, "--install-extension", "anthropic.claude-code"],
+    30e3,
+  );
+  if (!result.ok) {
+    logSharedStateFailure(
+      profile.configDir,
+      "VS Code extension",
+      profile.id,
+      new Error(result.error),
+    );
+  }
+}
+function scheduleVSCodeProfileSettings(executable, profileName, profile) {
+  let attempts = 0;
+  const tryWrite = () => {
+    attempts += 1;
+    if (writeVSCodeProfileSettings(profileName, profile)) {
+      installClaudeVSCodeExtension(executable, profileName, profile);
+      return;
+    }
+    if (attempts < 24) setTimeout(tryWrite, 250);
+  };
+  setTimeout(tryWrite, 250);
+}
+function prepareProfileState(profile) {
+  if (profile.dashboardRole !== "personal") {
+    linkSharedState(profile.configDir);
+  }
 }
 var wtPath = () =>
   findOnPath("wt") ?? // Windows Terminal usually lives behind an app-execution alias:
@@ -437,7 +859,7 @@ function buildTerminalInvocation(profile, run) {
   };
 }
 function openTerminal(profile, run) {
-  linkSharedState(profile.configDir);
+  prepareProfileState(profile);
   const inv = buildTerminalInvocation(profile, run);
   (0, import_node_child_process2.spawn)(inv.exe, inv.args, {
     env: inv.env,
@@ -447,12 +869,6 @@ function openTerminal(profile, run) {
     windowsVerbatimArguments: inv.exe === "cmd.exe",
   }).unref();
 }
-function openPowerShell(profile) {
-  openTerminal(profile);
-}
-function openClaude(profile) {
-  openTerminal(profile, "claude");
-}
 function openLoginTerminal(profile) {
   openTerminal(
     profile,
@@ -460,19 +876,31 @@ function openLoginTerminal(profile) {
   );
 }
 function openVSCode(profile) {
-  const code = findOnPath("code");
-  if (!code) {
-    return { ok: false, error: "VS Code ('code') was not found on PATH." };
+  const executable = vsCodeExecutable();
+  if (!executable) {
+    return { ok: false, error: "The VS Code executable was not found." };
   }
-  linkSharedState(profile.configDir);
-  (0, import_node_child_process2.spawn)("cmd.exe", ["/c", "code", "-n"], {
-    env: envFor(profile),
-    cwd: os4.homedir(),
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-  }).unref();
-  return { ok: true };
+  prepareProfileState(profile);
+  const profileName = vsCodeProfileName(profile);
+  const settingsReady = writeVSCodeProfileSettings(profileName, profile);
+  if (settingsReady) {
+    installClaudeVSCodeExtension(executable, profileName, profile);
+  }
+  try {
+    spawnDetachedExecutable(
+      executable,
+      ["--new-window", "--profile", profileName],
+      {
+        env: envFor(profile),
+      },
+    );
+    if (!settingsReady) {
+      scheduleVSCodeProfileSettings(executable, profileName, profile);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: `Could not open VS Code: ${err.message}` };
+  }
 }
 function openSafeCliTerminal(executable, args, title) {
   if (!new Set(["claude", "codex"]).has(executable)) {
@@ -738,15 +1166,28 @@ function listProfiles() {
 function getProfile(id) {
   return load().profiles.find((p) => p.id === id);
 }
-function createProfile(name) {
+function normalizeDashboardRole(role) {
+  return role === "work" || role === "personal" ? role : null;
+}
+function ensureDashboardRoleAvailable(store, role) {
+  if (!role) return;
+  if (store.profiles.some((p) => p.dashboardRole === role)) {
+    throw new Error(
+      `A ${role} Claude account is already assigned to the Dashboard.`,
+    );
+  }
+}
+function createProfile(name, dashboardRole) {
   const store = load();
   const trimmed = name.trim();
+  const role = normalizeDashboardRole(dashboardRole);
   if (!trimmed) throw new Error("Account name is required.");
   if (
     store.profiles.some((p) => p.name.toLowerCase() === trimmed.toLowerCase())
   ) {
     throw new Error(`An account named "${trimmed}" already exists.`);
   }
+  ensureDashboardRoleAvailable(store, role);
   const base = path7.join(os5.homedir(), `.claude-${slugify(trimmed)}`);
   let dir = base;
   for (let i = 2; fs7.existsSync(dir); i++) dir = `${base}${i}`;
@@ -756,14 +1197,16 @@ function createProfile(name) {
     name: trimmed,
     configDir: dir,
     createdAt: /* @__PURE__ */ new Date().toISOString(),
+    ...(role ? { dashboardRole: role } : {}),
   };
   store.profiles.push(profile);
   save(store);
   return profile;
 }
-function importProfile(name, configDir) {
+function importProfile(name, configDir, dashboardRole) {
   const store = load();
   const trimmed = name.trim();
+  const role = normalizeDashboardRole(dashboardRole);
   if (!trimmed) throw new Error("Account name is required.");
   const dir = path7.resolve(configDir);
   if (!fs7.existsSync(dir) || !fs7.statSync(dir).isDirectory()) {
@@ -781,11 +1224,13 @@ function importProfile(name, configDir) {
   ) {
     throw new Error(`An account named "${trimmed}" already exists.`);
   }
+  ensureDashboardRoleAvailable(store, role);
   const profile = {
     id: (0, import_node_crypto.randomUUID)(),
     name: trimmed,
     configDir: dir,
     createdAt: /* @__PURE__ */ new Date().toISOString(),
+    ...(role ? { dashboardRole: role } : {}),
   };
   store.profiles.push(profile);
   save(store);
@@ -927,6 +1372,13 @@ async function getValidAccessToken(configDir) {
 // electron/lib/usageService.ts
 var USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 var OAUTH_BETA_HEADER = "oauth-2025-04-20";
+var USAGE_CACHE_FRESH_MS = 5 * 60 * 1e3;
+var USAGE_REQUEST_GAP_MS = 1200;
+var USAGE_BACKOFF_BASE_MS = 2 * 60 * 1e3;
+var USAGE_BACKOFF_MAX_MS = 30 * 60 * 1e3;
+function retryAfterMs(response, fallbackMs) {
+  return parseRetryAfter(response.headers.get("retry-after"), fallbackMs);
+}
 function normalize(raw) {
   const limits = [];
   if (Array.isArray(raw.limits) && raw.limits.length > 0) {
@@ -976,8 +1428,15 @@ function normalize(raw) {
 }
 var UsageService = class {
   cache;
+  coordinator;
   constructor() {
-    this.cache = readJson(snapshotsFile()) ?? {};
+    this.cache = readNewestJson(snapshotsFile()) ?? {};
+    this.coordinator = new SerialRefreshCoordinator({
+      gapMs: USAGE_REQUEST_GAP_MS,
+    });
+    try {
+      this.persist();
+    } catch {}
   }
   getCached(profileId) {
     return this.cache[profileId] ?? null;
@@ -986,7 +1445,17 @@ var UsageService = class {
     delete this.cache[profileId];
     this.persist();
   }
-  async refresh(profile) {
+  async refresh(profile, options = {}) {
+    const now = Date.now();
+    const current = this.cache[profile.id];
+    if (current?.retryAt && current.retryAt > now) return current;
+    const lastAttempt = current?.lastAttemptAt ?? current?.fetchedAt ?? 0;
+    if (!options.force && current && now - lastAttempt < USAGE_CACHE_FRESH_MS) {
+      return current;
+    }
+    return this.coordinator.run(profile.id, () => this.fetchUsage(profile));
+  }
+  async fetchUsage(profile) {
     let snapshot;
     try {
       const token = await getValidAccessToken(profile.configDir);
@@ -998,14 +1467,34 @@ var UsageService = class {
       });
       if (!res.ok) {
         const relogin = res.status === 401 || res.status === 403;
+        const previousFailures = this.cache[profile.id]?.failureCount ?? 0;
+        const exponential = exponentialBackoffMs(
+          previousFailures,
+          USAGE_BACKOFF_BASE_MS,
+          USAGE_BACKOFF_MAX_MS,
+        );
+        const retryAt =
+          res.status === 429 || res.status >= 500
+            ? Date.now() + retryAfterMs(res, exponential)
+            : void 0;
         snapshot = this.failed(
           profile.id,
           relogin
             ? "Session expired \u2014 log in again from a terminal"
-            : `Usage API error (HTTP ${res.status})`,
+            : res.status === 429
+              ? "Usage refresh paused briefly (rate limit)"
+              : res.status >= 500
+                ? "Claude usage service is temporarily unavailable"
+                : `Usage API error (HTTP ${res.status})`,
+          { status: res.status, retryAt },
         );
       } else {
-        snapshot = normalize(await res.json());
+        snapshot = {
+          ...normalize(await res.json()),
+          lastAttemptAt: Date.now(),
+          lastSuccessAt: Date.now(),
+          failureCount: 0,
+        };
       }
     } catch (err) {
       const msg =
@@ -1014,22 +1503,29 @@ var UsageService = class {
             ? "Session expired \u2014 log in again from a terminal"
             : err.message
           : `Offline or unreachable: ${err.message}`;
-      snapshot = this.failed(profile.id, msg);
+      const previousFailures = this.cache[profile.id]?.failureCount ?? 0;
+      const retryAt =
+        err instanceof TokenError && err.needsRelogin
+          ? void 0
+          : Date.now() +
+            exponentialBackoffMs(
+              previousFailures,
+              USAGE_BACKOFF_BASE_MS,
+              USAGE_BACKOFF_MAX_MS,
+            );
+      snapshot = this.failed(profile.id, msg, { retryAt });
     }
     this.cache[profile.id] = snapshot;
-    this.persist();
+    try {
+      this.persist();
+    } catch (err) {
+      logSharedStateFailure(profile.configDir, "usage cache", profile.id, err);
+    }
     return snapshot;
   }
   /** Failed fetch keeps the previous limits so the UI can show stale-but-real data. */
-  failed(profileId, error) {
-    const prev = this.cache[profileId];
-    return {
-      fetchedAt: prev?.ok ? prev.fetchedAt : Date.now(),
-      ok: false,
-      error,
-      limits: prev?.ok ? prev.limits : [],
-      extra: prev?.ok ? prev.extra : void 0,
-    };
+  failed(profileId, error, details = {}) {
+    return retainFailedSnapshot(this.cache[profileId], error, details);
   }
   persist() {
     writeJsonAtomic(snapshotsFile(), this.cache);
@@ -2688,9 +3184,9 @@ function readGptUsage() {
       id: 1,
       params: {
         clientInfo: {
-          name: "ai_account_manager",
+          name: "claude_account_manager",
           title: "AI Account Manager",
-          version: "1.5.0",
+          version: import_electron4.app.getVersion(),
         },
       },
     });
@@ -2850,9 +3346,9 @@ function openApp() {
 }
 
 // electron/lib/ipc.ts
-var POLL_INTERVAL_MS = 5 * 60 * 1e3;
+var POLL_INTERVAL_MS = 10 * 60 * 1e3;
 var API_POLL_INTERVAL_MS = 10 * 60 * 1e3;
-var FOCUS_REFRESH_MIN_GAP_MS = 30 * 1e3;
+var FOCUS_REFRESH_MIN_GAP_MS = 5 * 60 * 1e3;
 var DEFAULT_ALERT_SETTINGS = {
   enabled: true,
   thresholds: [70, 85, 100],
@@ -2875,6 +3371,10 @@ function loadSettings() {
     alertState: saved.alertState ?? {},
     updates: { ...DEFAULT_UPDATE_SETTINGS, ...(saved.updates ?? {}) },
     automation: migrated.automation,
+    hiddenProfileIds: normalizeHiddenProfileIds(saved.hiddenProfileIds),
+    otherAccountsLayout: normalizeOtherAccountsLayout(
+      saved.otherAccountsLayout,
+    ),
   };
   if (JSON.stringify(saved) !== JSON.stringify(normalized)) {
     writeJsonAtomic(settingsFile(), normalized);
@@ -2983,6 +3483,7 @@ var Backend = class {
   api = new ApiService();
   defaultDir = null;
   lastFocusRefresh = 0;
+  usageRetryTimers = new Map();
   gptUsage = null;
   updateState = { checking: false, checkedAt: null, update: null, error: null };
   guideWin = null;
@@ -2993,13 +3494,11 @@ var Backend = class {
   async init() {
     this.defaultDir = await getDefaultConfigDir().catch(() => null);
     for (const profile of listProfiles()) {
+      if (profile.dashboardRole === "personal") continue;
       try {
         linkSharedState(profile.configDir);
       } catch (err) {
-        console.error(
-          `Failed to link shared session state for "${profile.name}":`,
-          err,
-        );
+        logSharedStateFailure(profile.configDir, "profile", profile.id, err);
       }
     }
     this.registerHandlers();
@@ -3797,6 +4296,7 @@ var Backend = class {
   }
   async buildStates() {
     const profiles = listProfiles();
+    const hiddenProfileIds = new Set(loadSettings().hiddenProfileIds);
     return Promise.all(
       profiles.map(async (profile) => {
         const identity = readIdentity(profile.configDir);
@@ -3812,7 +4312,17 @@ var Backend = class {
         const isDefault = this.defaultDir
           ? this.norm(this.defaultDir) === this.norm(profile.configDir)
           : isHomeDefaultDir(profile.configDir);
-        return { profile, identity, usage, activity, isDefault };
+        return {
+          profile,
+          identity,
+          usage,
+          activity,
+          isDefault,
+          hidden: hiddenProfileIds.has(profile.id),
+          dashboardRole:
+            normalizeDashboardRole(profile.dashboardRole) ??
+            (isDefault ? "work" : null),
+        };
       }),
     );
   }
@@ -3821,14 +4331,33 @@ var Backend = class {
     this.evaluateClaudeAlerts(states);
     this.getWindow()?.webContents.send("state:changed", states);
   }
-  async refreshAll(profileId) {
+  clearUsageRetry(profileId) {
+    const timer = this.usageRetryTimers.get(profileId);
+    if (timer) clearTimeout(timer);
+    this.usageRetryTimers.delete(profileId);
+  }
+  scheduleUsageRetry(profileId, retryAt) {
+    this.clearUsageRetry(profileId);
+    const delay = Math.max(1e3, Math.min(60 * 60 * 1e3, retryAt - Date.now()));
+    const timer = setTimeout(() => {
+      this.usageRetryTimers.delete(profileId);
+      void this.refreshAll(profileId, true);
+    }, delay + 250);
+    this.usageRetryTimers.set(profileId, timer);
+  }
+  async refreshAll(profileId, force = false) {
     const profiles = listProfiles().filter(
       (p) => !profileId || p.id === profileId,
     );
     await Promise.allSettled(
       profiles.map(async (p) => {
         if (readIdentity(p.configDir).loggedIn) {
-          await this.usage.refresh(p);
+          const snapshot = await this.usage.refresh(p, { force });
+          if (snapshot?.retryAt && snapshot.retryAt > Date.now()) {
+            this.scheduleUsageRetry(p.id, snapshot.retryAt);
+          } else {
+            this.clearUsageRetry(p.id);
+          }
         }
       }),
     );
@@ -3843,26 +4372,33 @@ var Backend = class {
     import_electron4.ipcMain.handle("gpt:refresh", () =>
       this.refreshGptUsage(),
     );
-    import_electron4.ipcMain.handle("profiles:create", (_e, name) => {
+    import_electron4.ipcMain.handle("profiles:create", (_e, name, role) => {
       try {
-        const profile = createProfile(name);
-        linkSharedState(profile.configDir);
+        const profile = createProfile(name, role);
+        if (normalizeDashboardRole(role) !== "personal") {
+          linkSharedState(profile.configDir);
+        }
         void this.pushState();
         return { ok: true, profile };
       } catch (err) {
         return { ok: false, error: err.message };
       }
     });
-    import_electron4.ipcMain.handle("profiles:import", (_e, name, dir) => {
-      try {
-        const profile = importProfile(name, dir);
-        linkSharedState(profile.configDir);
-        void this.refreshAll(profile.id);
-        return { ok: true, profile };
-      } catch (err) {
-        return { ok: false, error: err.message };
-      }
-    });
+    import_electron4.ipcMain.handle(
+      "profiles:import",
+      (_e, name, dir, role) => {
+        try {
+          const profile = importProfile(name, dir, role);
+          if (normalizeDashboardRole(role) !== "personal") {
+            linkSharedState(profile.configDir);
+          }
+          void this.refreshAll(profile.id, true);
+          return { ok: true, profile };
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
     import_electron4.ipcMain.handle("profiles:rename", (_e, id, name) => {
       try {
         const profile = renameProfile(id, name);
@@ -3877,6 +4413,12 @@ var Backend = class {
         stopWatching(id);
         removeProfile(id, deleteDir);
         this.usage.dropProfile(id);
+        const settings = loadSettings();
+        saveSettings({
+          hiddenProfileIds: settings.hiddenProfileIds.filter(
+            (profileId) => profileId !== id,
+          ),
+        });
         void this.pushState();
         return { ok: true };
       } catch (err) {
@@ -3907,36 +4449,113 @@ var Backend = class {
       return canceled ? null : (filePaths[0] ?? null);
     });
     import_electron4.ipcMain.handle("usage:refresh", async (_e, profileId) => {
-      await this.refreshAll(profileId);
+      await this.refreshAll(profileId, true);
+      return { ok: true };
     });
-    import_electron4.ipcMain.handle("launch", (_e, kind, profileId) => {
+    import_electron4.ipcMain.handle(
+      "profiles:launchVSCode",
+      (_e, profileId) => {
+        const profile = getProfile(profileId);
+        if (!profile) return { ok: false, error: "Account not found." };
+        try {
+          return openVSCode(profile);
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle("profiles:login", (_e, profileId) => {
       const profile = getProfile(profileId);
       if (!profile) return { ok: false, error: "Account not found." };
       try {
-        switch (kind) {
-          case "powershell":
-            openPowerShell(profile);
-            return { ok: true };
-          case "claude":
-            openClaude(profile);
-            return { ok: true };
-          case "vscode":
-            return openVSCode(profile);
-          case "login":
-            openLoginTerminal(profile);
-            watchForLogin(
-              profile.id,
-              profile.configDir,
-              () => void this.refreshAll(profile.id),
-            );
-            return { ok: true };
-          default:
-            return { ok: false, error: `Unknown launch kind: ${kind}` };
-        }
+        openLoginTerminal(profile);
+        watchForLogin(
+          profile.id,
+          profile.configDir,
+          () => void this.refreshAll(profile.id, true),
+        );
+        return { ok: true };
       } catch (err) {
         return { ok: false, error: err.message };
       }
     });
+    import_electron4.ipcMain.handle("launchers:claudeCowork", () =>
+      launchClaudeCowork(),
+    );
+    import_electron4.ipcMain.handle("launchers:codexChat", () =>
+      launchCodexChat(),
+    );
+    import_electron4.ipcMain.handle("launchers:vscodeCodex", () =>
+      launchVsCodeCodex(),
+    );
+    import_electron4.ipcMain.handle("launchers:vscodeProject", async () => {
+      const win2 = this.getWindow();
+      if (!win2) return { ok: false, error: "No window is available." };
+      const { canceled, filePaths } =
+        await import_electron4.dialog.showOpenDialog(win2, {
+          title: "Choose a project for VS Code Codex",
+          properties: ["openDirectory"],
+        });
+      if (canceled || !filePaths[0]) return { ok: true, cancelled: true };
+      try {
+        const selected = validateProjectDirectory(filePaths[0], (candidate) => {
+          try {
+            return fs11.statSync(candidate).isDirectory();
+          } catch {
+            return false;
+          }
+        });
+        return launchVsCodeCodex(selected.path);
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle("launchers:help", (_e, target) =>
+      openAllowedExternal(target, "Could not open the help page."),
+    );
+    import_electron4.ipcMain.handle("profiles:visibility:get", () => ({
+      hiddenProfileIds: loadSettings().hiddenProfileIds,
+    }));
+    import_electron4.ipcMain.handle(
+      "profiles:visibility:setHidden",
+      async (_e, profileId, hidden) => {
+        if (typeof hidden !== "boolean" || !getProfile(profileId)) {
+          return { ok: false, error: "Account visibility request is invalid." };
+        }
+        const settings = loadSettings();
+        const ids = setProfileHidden(
+          settings.hiddenProfileIds,
+          profileId,
+          hidden,
+        );
+        saveSettings({ hiddenProfileIds: ids });
+        await this.pushState();
+        return { ok: true, hiddenProfileIds: ids };
+      },
+    );
+    import_electron4.ipcMain.handle("profiles:visibility:showAll", async () => {
+      saveSettings({ hiddenProfileIds: [] });
+      await this.pushState();
+      return { ok: true, hiddenProfileIds: [] };
+    });
+    import_electron4.ipcMain.handle(
+      "profiles:otherAccountsLayout:get",
+      () => loadSettings().otherAccountsLayout,
+    );
+    import_electron4.ipcMain.handle(
+      "profiles:otherAccountsLayout:set",
+      (_e, requestedLayout) => {
+        if (requestedLayout !== "grid" && requestedLayout !== "wide") {
+          return {
+            ok: false,
+            error: "The requested account layout is invalid.",
+          };
+        }
+        const layout = normalizeOtherAccountsLayout(requestedLayout);
+        saveSettings({ otherAccountsLayout: layout });
+        return { ok: true, layout };
+      },
+    );
     import_electron4.ipcMain.handle("default:set", async (_e, profileId) => {
       try {
         let dir = profileId ? (getProfile(profileId)?.configDir ?? null) : null;
@@ -4035,6 +4654,15 @@ var backend = null;
 var tray = null;
 var isQuitting = false;
 var startInBackground = process.argv.includes("--background");
+
+// Keep the safeStorage (DPAPI) master key with the app across the product
+// rename, so the API key vault in %APPDATA%\ClaudeAccountManager stays
+// readable. Must run before app.whenReady(); see the module for the contract.
+var { adoptLegacySafeStorageKey } = require("./safe-storage-continuity.cjs");
+adoptLegacySafeStorageKey({
+  userDataDir: import_electron5.app.getPath("userData"),
+  appDataRoot: import_electron5.app.getPath("appData"),
+});
 if (!import_electron5.app.requestSingleInstanceLock()) {
   import_electron5.app.quit();
 } else {

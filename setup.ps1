@@ -58,11 +58,21 @@ if (-not $supportedSdk) {
 Write-Host "Found .NET SDK $supportedSdk.x or newer"
 
 # --- 3. Dependencies ------------------------------------------------------
-# There is no package-lock.json in this distribution, so 'npm ci' cannot be
-# used - 'npm install' resolves against the ranges in package.json.
+# 'npm ci' installs exactly what package-lock.json pins, which is what CI does
+# too. It refuses to run if the lockfile and package.json have drifted apart -
+# in that case fall back to 'npm install', which updates the lockfile.
 Write-Host "`n[1/4] Toolchains ready." -ForegroundColor Cyan
 Write-Host "`n[2/4] Installing dependencies..." -ForegroundColor Cyan
-npm install
+if (Test-Path (Join-Path $PSScriptRoot "package-lock.json")) {
+    npm ci
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "'npm ci' failed - retrying with 'npm install'." -ForegroundColor Yellow
+        Write-Host "If that succeeds, commit the updated package-lock.json." -ForegroundColor Yellow
+        npm install
+    }
+} else {
+    npm install
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Dependency install failed - see the npm output above." -ForegroundColor Red
     exit $LASTEXITCODE
@@ -106,12 +116,17 @@ if ($SkipTests) {
 }
 
 # --- Done -----------------------------------------------------------------
-Write-Host "`nDone. Useful commands:" -ForegroundColor Green
-Write-Host "    npm test               unit tests + runtime verification"
-Write-Host "    npm run build:dir      unpacked build into release\win-unpacked"
-Write-Host "    npm run automation:soak  measure helper idle CPU, memory and handles"
-Write-Host "    .\build\build.ps1      build the NSIS installer"
-Write-Host "    npm run format         Prettier across app, scripts, tests, .github"
+Write-Host "`nSetup complete. Start the app with:" -ForegroundColor Green
+Write-Host ""
+Write-Host "    npm start" -ForegroundColor White
+Write-Host ""
+Write-Host "Other useful commands:" -ForegroundColor Green
+Write-Host "    npm test                    unit tests + runtime verification"
+Write-Host "    npm run verify:safestorage  prove the API key vault survives a rename"
+Write-Host "    npm run build:dir           unpacked build into release\win-unpacked"
+Write-Host "    npm run automation:soak     measure helper idle CPU, memory and handles"
+Write-Host "    .\build\build.ps1           build the NSIS installer"
+Write-Host "    npm run format              Prettier across app, scripts, tests, .github"
 Write-Host ""
 Write-Host "IMPORTANT: this project's source of record is the FORMATTED RUNTIME" -ForegroundColor Yellow
 Write-Host "in app\ - there is no TypeScript build step. Edit app\dist-electron\" -ForegroundColor Yellow
