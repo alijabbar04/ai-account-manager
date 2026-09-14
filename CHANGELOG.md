@@ -45,6 +45,11 @@ not full histories.
   that starts the app.
 - `tests/vscode-launch-smoke.ps1` discovers VS Code instead of hard-coding one
   machine's install path.
+- `setup.ps1` repairs a half-unpacked Electron install. On Node 24 the
+  postinstall stops after the first entry in the archive and exits 0, leaving
+  `node_moduleselectrondist` containing only `locales`. Setup now extracts
+  the already-cached zip itself, and says which of the two failure modes it saw
+  instead of always blaming a proxy.
 
 ### Fixed
 

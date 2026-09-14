@@ -46,13 +46,36 @@ $env:ELECTRON_RUN_AS_NODE = $null; npm run build:dir
 
 ### `node_modules\electron\dist\electron.exe` is missing
 
-Electron's ~150 MB postinstall download was blocked, usually by a proxy.
+Electron's ~130 MB postinstall step failed. There are two distinct causes and
+they need different fixes, so check which one you have:
+
+```powershell
+Get-ChildItem node_modules\electron\dist
+```
+
+**If `dist\` is missing or empty, the download was blocked** — usually a proxy.
 
 ```powershell
 node node_modules\electron\install.js
 ```
 
-`setup.ps1` retries this automatically. If it still fails, set `HTTPS_PROXY`.
+If that still fails, set `HTTPS_PROXY` and re-run.
+
+**If `dist\` contains only `locales\`, the download worked and the *unpacking*
+silently did nothing.** On Node 24 the postinstall stops after the first entry
+in the archive and exits successfully, which makes it look like it worked. The
+verified zip is already cached, so finish the job yourself:
+
+```powershell
+$version = (Get-Content node_modules\electron\package.json -Raw | ConvertFrom-Json).version
+$zip = Get-ChildItem "$env:LOCALAPPDATA\electron\Cache" -Recurse -Filter "electron-v$version-win32-x64.zip" | Select-Object -First 1
+Remove-Item node_modules\electron\dist -Recurse -Force
+Expand-Archive -LiteralPath $zip.FullName -DestinationPath node_modules\electron\dist
+Set-Content node_modules\electron\path.txt "electron.exe" -NoNewline
+```
+
+`setup.ps1` does all of the above automatically, including the extraction
+fallback — re-running it is the quickest fix for either cause.
 
 ---
 

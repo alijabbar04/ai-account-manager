@@ -79,22 +79,57 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- 4. Electron binary ---------------------------------------------------
-# Electron downloads a ~150 MB binary in a postinstall step. Corporate proxies
-# block it silently, leaving an install that looks complete until a build fails.
+# Electron downloads a ~130 MB binary in a postinstall step, and that step has
+# two independent ways to leave you with an install that looks complete until a
+# build fails much later:
+#
+#   1. the download is blocked (corporate proxy), or
+#   2. the download succeeds and the EXTRACTION silently does nothing.
+#
+# (2) is real, not hypothetical: on Node 24, electron 37's postinstall stops
+# after the first zip entry, exits 0, and leaves dist\ containing only
+# locales\. The zip itself lands in the cache intact, so we can finish the job
+# ourselves with Expand-Archive rather than making the contributor debug it.
 Write-Host "`n[3/4] Checking the Electron binary..." -ForegroundColor Cyan
-$electronExe = Join-Path $PSScriptRoot "node_modules\electron\dist\electron.exe"
+$electronDist = Join-Path $PSScriptRoot "node_modules\electron\dist"
+$electronExe = Join-Path $electronDist "electron.exe"
+
+if (-not (Test-Path $electronExe)) {
+    Write-Host "Electron binary missing - running the postinstall step..." -ForegroundColor Yellow
+    node (Join-Path $PSScriptRoot "node_modules\electron\install.js")
+}
+
+if (-not (Test-Path $electronExe)) {
+    # The postinstall leaves the verified zip in the cache even when unpacking
+    # it fails, so look there before concluding anything about the network.
+    $electronVersion = (Get-Content (Join-Path $PSScriptRoot "node_modules\electron\package.json") -Raw |
+        ConvertFrom-Json).version
+    $cacheRoot = if ($env:ELECTRON_CACHE) {
+        $env:ELECTRON_CACHE
+    } else {
+        Join-Path $env:LOCALAPPDATA "electron\Cache"
+    }
+    $zip = Get-ChildItem -Path $cacheRoot -Recurse -Filter "electron-v$electronVersion-win32-x64.zip" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    if ($zip) {
+        Write-Host "Download succeeded but unpacking did not - extracting $($zip.Name) directly..." -ForegroundColor Yellow
+        Remove-Item $electronDist -Recurse -Force -ErrorAction SilentlyContinue
+        Expand-Archive -LiteralPath $zip.FullName -DestinationPath $electronDist -Force
+        # electron's index.js reads this to locate the binary it just unpacked.
+        Set-Content -Path (Join-Path $PSScriptRoot "node_modules\electron\path.txt") -Value "electron.exe" -NoNewline
+    }
+}
+
 if (Test-Path $electronExe) {
     Write-Host "Electron binary present." -ForegroundColor Green
 } else {
-    Write-Host "Electron binary missing - retrying the postinstall download..." -ForegroundColor Yellow
-    node (Join-Path $PSScriptRoot "node_modules\electron\install.js")
-    if (Test-Path $electronExe) {
-        Write-Host "Electron binary downloaded." -ForegroundColor Green
-    } else {
-        Write-Host "Still missing - you are probably behind a proxy that blocks the" -ForegroundColor Red
-        Write-Host "GitHub release download. Set HTTPS_PROXY and re-run." -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "Electron is still not usable." -ForegroundColor Red
+    Write-Host "  * No cached zip found: the download was blocked. If you are behind a" -ForegroundColor Red
+    Write-Host "    proxy, set HTTPS_PROXY and re-run this script." -ForegroundColor Red
+    Write-Host "  * Cached zip found but extraction failed: check free disk space and" -ForegroundColor Red
+    Write-Host "    that antivirus is not quarantining electron.exe." -ForegroundColor Red
+    exit 1
 }
 
 # --- 5. Tests -------------------------------------------------------------
