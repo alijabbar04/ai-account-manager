@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 # Resolve VS Code the way a contributor's machine actually has it: a per-user
 # install first, then a machine-wide one, then whatever is on PATH.
@@ -11,7 +11,9 @@ $code = $candidates |
     Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
     Select-Object -First 1
 if (-not $code) {
-    $code = (Get-Command code.cmd -ErrorAction SilentlyContinue)?.Source
+    # No ?. here - this has to parse under Windows PowerShell 5.1 too.
+    $onPath = Get-Command code.cmd -ErrorAction SilentlyContinue
+    if ($onPath) { $code = $onPath.Source }
 }
 if (-not $code) {
     throw "VS Code was not found. Install it, or put 'code' on PATH, then re-run."
