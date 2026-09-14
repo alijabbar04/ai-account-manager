@@ -17,6 +17,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the update manifest reads the annotated tag's
+          # message, which a shallow checkout would not have.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -64,8 +68,6 @@ jobs:
       # the installer against this SHA-256 before offering it.
       - name: Generate the update manifest
         shell: pwsh
-        env:
-          RELEASE_NOTES: ${{ github.event.head_commit.message }}
         run: |
           $version = $env:PACKAGE_VERSION
           $installer = "release/AI-Account-Manager-Setup-$version.exe"
@@ -74,6 +76,15 @@ jobs:
           } else {
               "v$version"
           }
+          # These notes are shown to users in Dashboard -> Updates, so prefer the
+          # annotated tag's message - written for them - over the raw commit
+          # body, which is written for whoever reads the history.
+          $notes = ""
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+              $notes = (git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' $tag | Out-String).Trim()
+          }
+          if (-not $notes) { $notes = "See the release notes for details." }
+          $env:RELEASE_NOTES = $notes
           $url = "https://github.com/${{ github.repository }}/releases/download/$tag/AI-Account-Manager-Setup-$version.exe"
           npm run release:manifest -- $installer $url
 
