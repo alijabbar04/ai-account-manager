@@ -11,6 +11,12 @@ not full histories.
 
 ### Fixed
 
+- **The PowerShell scripts now run under Windows PowerShell 5.1**, which is what
+  ships with Windows and what the installer invokes. Two traps only show up
+  there: `??` is a PowerShell 7 operator and is a parse error in 5.1, and 5.1
+  decodes a BOM-less file as ANSI, so one non-ASCII character can swallow the
+  rest of the file into an unterminated string. `tests/powershell-compat.test.cjs`
+  now fails the build on either.
 - **Signing in no longer depends on `claude` being on `PATH`.** *Add account →
   Create new* opened a terminal running a bare `claude auth login`. When the
   shell could not resolve `claude`, the user was left looking at a raw
@@ -35,6 +41,11 @@ not full histories.
 
 ### Added
 
+- **The installer offers it too.** The finish page gains an *unchecked*
+  "Install Claude Code and tools" checkbox that opens the script in a visible
+  PowerShell window, where it asks again before installing anything. The
+  uninstaller deliberately does not remove those tools - they are independent
+  programs the user may rely on elsewhere.
 - **`scripts/install-prerequisites.ps1` installs what the app drives.** The app
   is a dashboard over Claude Code (required), the Codex CLI and VS Code
   (optional), and a new machine has none of them. One command now reports what

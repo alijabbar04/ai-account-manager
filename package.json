@@ -53,6 +53,10 @@
       {
         "from": "build/icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "scripts/install-prerequisites.ps1",
+        "to": "install-prerequisites.ps1"
       }
     ],
     "directories": {

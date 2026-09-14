@@ -111,10 +111,18 @@ $tools = @(
         WingetId  = "OpenAI.Codex"
         Publisher = "OpenAI, Inc."
         Why       = "the GPT / Codex usage panel reads your ChatGPT plan usage from it"
-        Path      = (Find-CodexBin) ?? (Find-Tool -CommandNames @("codex") -Probes @(
-            (Join-Path $env:APPDATA "npm\codex.cmd"),
-            (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\codex.exe")
-        ))
+        # No ?? here: this file has to run under Windows PowerShell 5.1, which
+        # is what the installer checkbox and most users invoke.
+        Path      = $(
+            $codex = Find-CodexBin
+            if (-not $codex) {
+                $codex = Find-Tool -CommandNames @("codex") -Probes @(
+                    (Join-Path $env:APPDATA "npm\codex.cmd"),
+                    (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\codex.exe")
+                )
+            }
+            $codex
+        )
     },
     [pscustomobject]@{
         Key       = "vscode"
