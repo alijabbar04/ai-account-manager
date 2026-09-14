@@ -33,6 +33,14 @@ not full histories.
   A stale `CLAUDE_CLI_PATH` is ignored rather than trusted, so it cannot mask a
   working install.
 
+### Added
+
+- `scripts/diagnose-claude-cli.ps1` — a read-only diagnosis for the error
+  above, runnable in one line on any affected machine. It reports the installed
+  app version, whether that version resolves the CLI by itself, where
+  `claude.exe` actually is, and PATH health, then prints the fix for whichever
+  cause it found.
+
 ## [1.7.0] — unreleased
 
 ### Added

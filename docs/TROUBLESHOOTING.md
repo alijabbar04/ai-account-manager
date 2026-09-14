@@ -92,7 +92,20 @@ The app opened a terminal to run `claude auth login` and the shell could not
 find the Claude Code CLI. Since 1.7.1 the app resolves `claude.exe` to an
 absolute path itself and refuses to open the terminal at all if it cannot,
 telling you so in the UI — so if you are seeing the raw shell error above, you
-are on an older build. Either way, here is what is actually wrong.
+are on an older build.
+
+**The quickest way to find out which cause you have** is to run the diagnosis
+script on the affected machine. It is read-only, needs no admin rights, and
+prints the exact fix:
+
+```powershell
+irm https://raw.githubusercontent.com/alijabbar04/ai-account-manager/main/scripts/diagnose-claude-cli.ps1 | iex
+```
+
+It reports the installed app version, whether that version can resolve the CLI
+by itself, where `claude.exe` actually is, and the health of your PATH.
+
+The rest of this section is what it checks, by hand.
 
 First, is it installed?
 
