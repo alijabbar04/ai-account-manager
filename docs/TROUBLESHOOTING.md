@@ -79,6 +79,67 @@ fallback — re-running it is the quickest fix for either cause.
 
 ---
 
+## Account sign-in problems
+
+### The login terminal says `The term 'claude' is not recognized`
+
+```
+claude : The term 'claude' is not recognized as the name of a cmdlet,
+function, script file, or operable program.
+```
+
+The app opened a terminal to run `claude auth login` and the shell could not
+find the Claude Code CLI. Since 1.7.1 the app resolves `claude.exe` to an
+absolute path itself and refuses to open the terminal at all if it cannot,
+telling you so in the UI — so if you are seeing the raw shell error above, you
+are on an older build. Either way, here is what is actually wrong.
+
+First, is it installed?
+
+```powershell
+Test-Path "$env:USERPROFILE\.local\bin\claude.exe"
+```
+
+**If `False`** — install Claude Code from <https://claude.com/claude-code>, then
+reopen the app.
+
+**If `True`, it is installed and PATH is the problem.** The usual cause is that
+the app is running with an environment from before Claude Code was installed:
+the installer adds `%USERPROFILE%\.local\bin` to your user PATH, but already
+running processes keep the environment they started with, and every terminal the
+app opens inherits the app's. Check what your PATH really contains:
+
+```powershell
+($env:PATH -split ';') -contains "$env:USERPROFILE\.local\bin"
+(Get-ItemProperty HKCU:\Environment -Name Path).Path -split ';' |
+    Where-Object { $_ -like '*\.local\bin' }
+```
+
+If the registry line prints it and the first line says `False`, the app just
+needs restarting — quit it fully (check the tray) and launch it again. Signing
+out and back in fixes it for everything at once.
+
+If your PATH is genuinely missing the folder, or the CLI lives somewhere
+unusual, point the app straight at it:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+    "CLAUDE_CLI_PATH", "$env:USERPROFILE\.local\bin\claude.exe", "User")
+```
+
+Then restart the app. `CLAUDE_CLI_PATH` takes priority over PATH, and is ignored
+if it points at a file that no longer exists, so a stale value cannot mask a
+working install.
+
+> **A very long PATH is worth checking too.** Windows builds a process
+> environment from the machine and user PATH combined; if yours has grown to
+> thousands of characters — build tooling that appends an entry per run is the
+> usual culprit — entries can stop resolving. `(Get-ItemProperty
+> HKCU:\Environment -Name Path).Path.Length` tells you how big yours is; a few
+> hundred characters is normal, ten thousand is not.
+
+---
+
 ## The app opens but has no accounts or API keys
 
 ### My accounts have disappeared / it looks like a completely fresh install
@@ -111,8 +172,6 @@ If accounts have vanished, check:
    "remove all user data" option if one is offered.
 
 Everything the app persists lives in that one folder:
-
-Everything the app persists lives there:
 
 | File | Holds |
 |---|---|
@@ -325,7 +384,7 @@ all three, and the download URL is HTTPS.
 Regenerate it properly:
 
 ```powershell
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.0.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.0.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.1.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.1.exe'
 ```
 
 Plain HTTP, a missing digest, or a hand-edited manifest will always be rejected.

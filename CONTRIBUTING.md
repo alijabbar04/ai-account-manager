@@ -75,6 +75,7 @@ exists are a few optional process-environment overrides:
 
 | Variable | Used by | For |
 |---|---|---|
+| `CLAUDE_CLI_PATH` | app | Point at a `claude.exe` when PATH does not carry it. Ignored if the path does not exist, so a stale value cannot mask a working install |
 | `VSCODE_CLI_PATH` | app | Point at a `Code.exe` when discovery misses your install |
 | `CODEX_CLI_PATH` | app | Same for the Codex CLI |
 | `CAM_FAKE_PROVIDERS=1` | app | Serve mock provider data so the API views can be exercised without a real key or network call |

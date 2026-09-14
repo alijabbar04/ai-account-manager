@@ -27,7 +27,7 @@ Gemini and OpenRouter.
 
 > ### This repository's source of record is *formatted runtime JavaScript*, not TypeScript.
 
-Versions 1.3.0 through 1.7.0 were produced by editing the app's built output
+Versions 1.3.0 through 1.7.1 were produced by editing the app's built output
 directly and repacking it — the original TypeScript/React project for those
 releases no longer exists. What you see in `app/` is that runtime, recovered and
 formatted: readable, tested and reproducible, but not the original sources.
@@ -143,7 +143,7 @@ self-contained helper. See [docs/INSTALL.md](docs/INSTALL.md).
 Build the installer:
 
 ```powershell
-.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.7.0.exe
+.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.7.1.exe
 ```
 
 | Command | What it does |
@@ -302,7 +302,7 @@ app, the installer, the artifact name and the update manifest all read from it.
    `CHANGELOG.md` entry.
 2. `npm test`, then `.\build\build.ps1`, then install the result once. A
    packaged build fails on things a dev run never exercises.
-3. Commit, then tag: `git tag v1.7.0 && git push origin main --tags`.
+3. Commit, then tag: `git tag v1.7.1 && git push origin main --tags`.
 
 The tag starts [`release.yml`](.github/workflows/release.yml), which refuses to
 build if the tag and `package.json` disagree, runs the full suite, packages the
@@ -321,7 +321,7 @@ and `CSC_KEY_PASSWORD` automatically.
 If you host installers yourself rather than on GitHub Releases:
 
 ```powershell
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.0.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.0.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.1.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.1.exe'
 ```
 
 Host `release/latest.json` over HTTPS and paste that URL into

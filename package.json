@@ -1,7 +1,7 @@
 {
   "name": "ai-account-manager-desktop",
   "productName": "AI Account Manager",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Manage Claude accounts, GPT/Codex usage, provider permissions, alerts, and API analytics.",
   "private": true,
   "main": "app/dist-electron/main.cjs",

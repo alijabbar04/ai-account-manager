@@ -1,7 +1,7 @@
 {
   "name": "ai-account-manager",
   "productName": "AI Account Manager",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Manage Claude Code accounts, GPT/Codex usage history, provider permissions, alerts, and API analytics from one Windows dashboard.",
   "author": "AI Account Manager contributors",
   "license": "MIT",

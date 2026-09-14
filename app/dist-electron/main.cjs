@@ -433,6 +433,27 @@ function findOnPath(exe) {
   }
   return null;
 }
+var {
+  resolveClaudeCli,
+  claudeCliMissingMessage,
+} = require("./claude-cli-domain.cjs");
+// Resolve the Claude Code CLI to an absolute path. A bare "claude" only works
+// when PATH happens to carry it, and a terminal the app opened inherits the
+// app's PATH - so a stale environment surfaces as an unactionable
+// CommandNotFoundException. See claude-cli-domain.cjs.
+function claudeExecutable() {
+  return resolveClaudeCli({
+    env: process.env,
+    exists: fileExists,
+    findOnPath,
+    path: path4,
+  }).path;
+}
+function requireClaudeExecutable() {
+  const resolved = claudeExecutable();
+  if (!resolved) throw new Error(claudeCliMissingMessage());
+  return resolved;
+}
 function vsCodeExecutable() {
   if (process.env.VSCODE_CLI_PATH && fileExists(process.env.VSCODE_CLI_PATH)) {
     const configured = process.env.VSCODE_CLI_PATH;
@@ -870,9 +891,12 @@ function openTerminal(profile, run) {
   }).unref();
 }
 function openLoginTerminal(profile) {
+  // Resolve before opening the window. Failing here surfaces a real message in
+  // the UI; failing inside the terminal just prints a shell error at the user.
+  const claudeCli = requireClaudeExecutable();
   openTerminal(
     profile,
-    "Write-Host 'Complete the sign-in in your browser (Anthropic or Google).' -ForegroundColor Yellow; claude auth login",
+    `Write-Host 'Complete the sign-in in your browser (Anthropic or Google).' -ForegroundColor Yellow; & ${psSingleQuote2(claudeCli)} auth login`,
   );
 }
 function openVSCode(profile) {
@@ -906,8 +930,15 @@ function openSafeCliTerminal(executable, args, title) {
   if (!new Set(["claude", "codex"]).has(executable)) {
     throw new Error("Unsupported session command.");
   }
-  const resolved = findOnPath(executable);
-  if (!resolved) throw new Error(`${executable} was not found on PATH.`);
+  const resolved =
+    executable === "claude" ? claudeExecutable() : findOnPath(executable);
+  if (!resolved) {
+    throw new Error(
+      executable === "claude"
+        ? claudeCliMissingMessage()
+        : `${executable} was not found on PATH.`,
+    );
+  }
   const allowedArguments = args.map((argument) => {
     const value = String(argument);
     if (value.length > 160 || /[\r\n\0]/.test(value)) {
@@ -957,10 +988,12 @@ function openSafeCliTerminal(executable, args, title) {
 }
 function claudeCliVersion() {
   return new Promise((resolve5) => {
+    const claudeCli = claudeExecutable();
+    if (!claudeCli) return resolve5(void 0);
     (0, import_node_child_process2.execFile)(
-      "claude",
+      claudeCli,
       ["--version"],
-      { windowsHide: true, timeout: 15e3, shell: true },
+      { windowsHide: true, timeout: 15e3 },
       (_err, stdout) => resolve5(stdout?.trim() || void 0),
     );
   });
@@ -4176,7 +4209,10 @@ var Backend = class {
             const safeArgs = command.args
               .map((argument) => psSingleQuote2(String(argument)))
               .join(" ");
-            openTerminal(account, `claude ${safeArgs}`);
+            openTerminal(
+              account,
+              `& ${psSingleQuote2(requireClaudeExecutable())} ${safeArgs}`,
+            );
           } else {
             openSafeCliTerminal(command.executable, command.args, profile.name);
           }

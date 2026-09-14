@@ -39,6 +39,12 @@ const files = {
     "dist-electron",
     "safe-storage-continuity.cjs",
   ),
+  claudeCliDomain: path.join(
+    root,
+    "app",
+    "dist-electron",
+    "claude-cli-domain.cjs",
+  ),
   selectors: path.join(
     root,
     "automation",
@@ -67,6 +73,7 @@ for (const file of [
   files.launcherDomain,
   files.usageReliabilityDomain,
   files.safeStorageContinuity,
+  files.claudeCliDomain,
 ]) {
   const check = spawnSync(process.execPath, ["--check", file], {
     encoding: "utf8",
@@ -318,6 +325,33 @@ assert.ok(
     main.indexOf("adoptLegacySafeStorageKey({") <
       main.indexOf("app.whenReady().then("),
   "The safeStorage key adoption must run before whenReady",
+);
+
+// --- external CLI resolution ---------------------------------------------
+// A bare "claude" resolves only if PATH happens to carry it, and a terminal the
+// app opens inherits the app's PATH. When that went stale the user got a raw
+// PowerShell CommandNotFoundException instead of an actionable message.
+assert.ok(
+  main.includes("requireClaudeExecutable()"),
+  "The Claude CLI must be resolved to an absolute path before use",
+);
+for (const bareInvocation of [
+  "-ForegroundColor Yellow; claude auth login",
+  "openTerminal(account, `claude ",
+]) {
+  assert.ok(
+    !main.includes(bareInvocation),
+    `A bare 'claude' invocation was reintroduced: ${bareInvocation}`,
+  );
+}
+const claudeCliDomain = fs.readFileSync(files.claudeCliDomain, "utf8");
+assert.ok(
+  claudeCliDomain.includes('".local", "bin", "claude.exe"'),
+  "The native installer location must stay in the candidate list",
+);
+assert.ok(
+  claudeCliDomain.includes("CLAUDE_CLI_PATH"),
+  "The documented override must remain supported",
 );
 
 process.stdout.write("Runtime verification passed.\n");

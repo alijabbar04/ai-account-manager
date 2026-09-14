@@ -7,6 +7,32 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.1] — unreleased
+
+### Fixed
+
+- **Signing in no longer depends on `claude` being on `PATH`.** *Add account →
+  Create new* opened a terminal running a bare `claude auth login`. When the
+  shell could not resolve `claude`, the user was left looking at a raw
+  PowerShell `CommandNotFoundException` in a window the app had just opened —
+  nothing about what was wrong or what to do.
+
+  This is easier to hit than it looks. The native installer puts `claude.exe` in
+  `%USERPROFILE%\.local\bin` and adds that to the user `PATH`, but a process
+  that was already running keeps its old environment, and every terminal the app
+  opens inherits the app's. So "install Claude Code, then sign in without
+  restarting the app" was a broken path.
+
+  `app/dist-electron/claude-cli-domain.cjs` now resolves the CLI to an absolute
+  path — `CLAUDE_CLI_PATH`, then `PATH`, then the native, npm-global, bun,
+  Store and Program Files locations — exactly as the app already did for Codex
+  and VS Code. Every call site uses it: the login terminal, permission-mode
+  launches, the session launcher and the version probe. When it genuinely cannot
+  be found, the app says so in the UI and does not open a doomed terminal.
+
+  A stale `CLAUDE_CLI_PATH` is ignored rather than trusted, so it cannot mask a
+  working install.
+
 ## [1.7.0] — unreleased
 
 ### Added
@@ -47,7 +73,7 @@ not full histories.
   machine's install path.
 - `setup.ps1` repairs a half-unpacked Electron install. On Node 24 the
   postinstall stops after the first entry in the archive and exits 0, leaving
-  `node_moduleselectrondist` containing only `locales`. Setup now extracts
+  `node_modules\electron\dist` containing only `locales\`. Setup now extracts
   the already-cached zip itself, and says which of the two failure modes it saw
   instead of always blaming a proxy.
 
@@ -131,5 +157,5 @@ First release published from this repository.
 - **1.0.0** — Multiple Claude Code accounts on one machine, each in its own
   `CLAUDE_CONFIG_DIR` profile, launching into a terminal or VS Code.
 
-[1.7.0]: https://github.com/alijabbar04/ai-account-manager/compare/v1.4.1...main
+[1.7.1]: https://github.com/alijabbar04/ai-account-manager/compare/v1.4.1...main
 [1.4.1]: https://github.com/alijabbar04/ai-account-manager/releases/tag/v1.4.1
