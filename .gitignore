@@ -27,16 +27,40 @@ automation/artifacts/
 # ---------------------------------------------------------------------------
 #  SECRETS - never commit
 # ---------------------------------------------------------------------------
-# Code-signing material. electron-builder reads CSC_LINK / CSC_KEY_PASSWORD
-# from the environment; CI reads them from encrypted repository secrets.
+# Code-signing and TLS material. electron-builder reads CSC_LINK /
+# CSC_KEY_PASSWORD from the environment; CI reads them from encrypted
+# repository secrets. Nothing of the sort belongs in the working tree.
 *.pfx
 *.p12
 *.pem
 *.key
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# There is no .env in this project - the app reads no configuration file and
+# has no credential of its own (see CONTRIBUTING, "Environment variables").
+# These stay listed so a local experiment cannot become a commit.
 .env
 .env.*
 secrets.json
 credentials.json
+
+# Registry and package-manager auth tokens.
+.npmrc
+.yarnrc
+.netrc
+_netrc
+
+# Crash dumps can contain decrypted secrets straight out of process memory.
+*.dmp
+*.mdmp
+*.dump
 
 # App state. It lives in %APPDATA%\ClaudeAccountManager, outside this repo -
 # listed so an accidental copy into the working tree cannot be staged.
