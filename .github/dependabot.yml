@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  # Electron and electron-builder. Everything here is build-time tooling except
+  # Electron itself, which ships inside the installer - treat an Electron major
+  # as a release in its own right and run the full suite plus a packaged install
+  # before merging it.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      build-tooling:
+        patterns:
+          - "prettier"
+          - "electron-builder"
+
+  # The .NET Windows UI Automation helper.
+  - package-ecosystem: nuget
+    directory: /automation
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - ci

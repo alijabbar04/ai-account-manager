@@ -209,6 +209,12 @@ not work around it by putting the key somewhere else.
 
 Two causes; the common one is fixable without re-entering anything.
 
+> **Since 1.7.0 the rename case is handled for you.** On startup the app copies
+> the master key from the previous product name's userData folder if the current
+> one has none — once, never overwriting a live key, and leaving the old folder
+> untouched. You should only meet this error now if you moved data by hand, or
+> if a fresh install had already minted its own key before the old data arrived.
+
 **1. The `safeStorage` master key did not come with the data.** If *every* key
 reports this at once, right after moving data between installs or renaming the
 app, the vault is fine — the master key is missing.
@@ -296,8 +302,7 @@ all three, and the download URL is HTTPS.
 Regenerate it properly:
 
 ```powershell
-$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.5.0.exe'
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.5.0.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.0.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.0.exe'
 ```
 
 Plain HTTP, a missing digest, or a hand-edited manifest will always be rejected.

@@ -1,8 +1,10 @@
 # ---------------------------------------------------------------------------
 #  Dependencies and build output
+#
+#  package-lock.json IS committed - CI installs with "npm ci", so a build from a
+#  clean checkout resolves the exact same dependency tree. Do not add it here.
 # ---------------------------------------------------------------------------
 node_modules/
-package-lock.json
 release/*
 !release/latest.example.json
 

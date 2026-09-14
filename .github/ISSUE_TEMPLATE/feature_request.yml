@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest a change to how the app works.
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: |
+        Describe the situation, not the solution. "I run four Claude accounts and
+        cannot tell which one a terminal is using" is more useful than "add a
+        badge".
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Accounts and profiles
+        - GPT / Codex usage
+        - API keys and analytics
+        - Alerts
+        - Automation & Sessions
+        - Session launcher
+        - Updates and packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require the app to hold a password, cookie or vendor session token.
+          required: false
+        - label: This works on Windows without administrator rights.
+          required: false

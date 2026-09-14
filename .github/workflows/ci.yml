@@ -6,32 +6,44 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: windows-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test-and-package:
+    # The app is Windows-only: it drives Windows UI Automation, DPAPI and the
+    # per-user registry. There is nothing meaningful to run on another OS.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      # 'npm ci' installs exactly what package-lock.json pins and fails if the
+      # lockfile has drifted from package.json.
       - name: Install JavaScript dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
+
       - name: Verify formatting
-        run: pnpm format:check
-      - name: Run JavaScript and native helper tests
-        run: pnpm test
+        run: npm run format:check
+
+      - name: Run JavaScript, runtime and native helper tests
+        run: npm test
+
       - name: Build unpacked Windows application
-        run: pnpm build:dir
+        run: npm run build:dir
+
       - name: Upload reviewable Windows build
         uses: actions/upload-artifact@v4
         with:

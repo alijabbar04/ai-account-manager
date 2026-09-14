@@ -8,7 +8,7 @@ Unattended operation can allow an AI agent to act on files, browser pages, deskt
 
 AI Account Manager never automates UAC or secure-desktop prompts, Windows sign-in, credentials, SmartScreen, antivirus, password managers, purchases, financial transactions, elevated windows, unknown processes, or arbitrary browser pages. It does not bypass protected vendor actions.
 
-The feature starts **Off** and **Dry run**. The first enable action shows a risk acknowledgement and remains in Dry run. Turning the global Dry run switch off requires a separate confirmation, but it does not promote an unvalidated provider: in 1.5.0 every production adapter is still forced to detection-only.
+The feature starts **Off** and **Dry run**. The first enable action shows a risk acknowledgement and remains in Dry run. Turning the global Dry run switch off requires a separate confirmation, but it does not promote an unvalidated provider: in 1.7.0 every production adapter is still forced to detection-only.
 
 ## First use
 
@@ -17,7 +17,7 @@ The feature starts **Off** and **Dry run**. The first enable action shows a risk
 3. Leave the relevant Claude/ChatGPT surface open and choose **Run diagnostics**. Review the redacted table; it should contain only trusted provider candidates and selector-matching accessible labels.
 4. If a real permission card is available, leave it visible and use **Inspect under cursor**. Keep Dry run on for the first capture.
 5. Leave each provider on **Detection only**. A selector revision can be promoted only after its complete live checklist passes.
-6. Turning Dry run off changes the requested global mode, but 1.5.0 reports **Validation required** and continues to force every unverified provider to Dry run. It cannot make an unverified selector clickable.
+6. Turning Dry run off changes the requested global mode, but 1.7.0 reports **Validation required** and continues to force every unverified provider to Dry run. It cannot make an unverified selector clickable.
 
 The persistent badge reports Off, Monitoring, Dry run, Paused, Validation required, Needs attention, or Error. Monitoring is shown only when an actionable adapter has passed its production gate. A provider-native mode may still require explicit approval for protected actions; the app reports that boundary rather than bypassing it.
 
@@ -37,8 +37,8 @@ Advanced settings control the post-detection approval delay, slow polling watchd
 
 | Method                    | Meaning                                                                                                                     |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Native Auto / auto-review | Command construction is verified, but product launch is locked in 1.5.0 pending an expiring trusted-session policy.        |
-| Native Skip / no prompts  | Command construction is verified, but product launch is locked in 1.5.0. This is the highest-risk mode.                    |
+| Native Auto / auto-review | Command construction is verified, but product launch is locked in 1.7.0 pending an expiring trusted-session policy.        |
+| Native Skip / no prompts  | Command construction is verified, but product launch is locked in 1.7.0. This is the highest-risk mode.                    |
 | UIA fallback              | Recognize a trusted, bounded Windows accessibility card. Every current selector stays detection-only.                     |
 | Dry run                   | Detect and audit only; never select native Auto/Skip and never invoke a UIA control.                                       |
 | Disabled                  | Do not monitor that adapter.                                                                                               |
@@ -93,7 +93,7 @@ Diagnostic actions:
 
 Selector strings and trust metadata are centralized in `automation/selectors/automation-selectors.v1.json`. Revision `2026-08-v3` includes the observed Claude Desktop Windows-MCP label and the stable `Claude wants to use …` prefix used by connector cards. Live Dry-run detection, persistent-card duplicate suppression, disappearance/reappearance, UI pause/resume, emergency pause, application restart, helper restart with settings restoration, and unrelated-window rejection have passed. Synthetic regressions cover two cards in one window, distinct windows, complete active-set reconciliation, and exact-button revalidation. A delayed action also rejects a recycled window handle whose current PID differs, and the action path permits only one semantic invocation with no retry. The selector remains detection-only until a card-while-paused test, simultaneous live Claude windows/cards, tray pause, and one user-controlled one-shot invocation pass. Do not set `liveEligible` until every live checklist item has passed.
 
-## Capability matrix (1.5.0)
+## Capability matrix (1.7.0)
 
 | Provider/surface                 | Capability                                                                | Status                  | Honest boundary                                                                                                                                                  |
 | -------------------------------- | ------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |

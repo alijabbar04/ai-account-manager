@@ -77,15 +77,18 @@ Repeat as many times as you like.
 
 ### Step 5 — Use an account
 
-Click **Open Claude** on a card. A terminal opens with that account's environment
-already set. Several accounts can be open at once — each terminal keeps its own
-account for as long as it lives. There is no "switching".
+Click **Open in VS Code** on a card. A VS Code window opens with that account's
+environment already set. Several accounts can be open at once — each window
+keeps its own account for as long as it lives. There is no "switching".
 
-**VS Code** and **PowerShell** buttons do the same for those.
+The dashboard also has **Start something new**: **New Claude Cowork**, **New
+Codex chat** and **New VS Code Codex** open the installed apps directly. Those
+use whichever account is active in Claude Desktop or ChatGPT — they are not
+per-profile.
 
 > **VS Code catch:** if VS Code is already running, Windows hands the new window
 > to the existing process, which keeps _its_ environment rather than the one the
-> app set. Close VS Code fully first, or use a terminal launch.
+> app set. Close VS Code fully first.
 
 ### Step 6 — Optional: set a default account
 
@@ -210,6 +213,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ### Step 5 — Run it
 
 ```powershell
+npm start
+```
+
+To test the packaged layout instead — `extraResources`, the bundled PDF guide,
+the automation helper — build it:
+
+```powershell
 npm run build:dir
 ```
 
@@ -221,7 +231,7 @@ That packages into `release\win-unpacked`; launch
 
 ### Step 6 — Understand what you are editing
 
-**This project has no TypeScript build step.** Versions 1.3.0–1.5.0 were made by
+**This project has no TypeScript build step.** Versions 1.3.0–1.7.0 were made by
 editing the app's built output directly; the original TypeScript for those
 releases no longer exists. `app/` _is_ the source:
 
@@ -263,12 +273,17 @@ The old and new builds install to separate folders, so both can sit on the
 machine at once. Uninstall the old one from **Settings → Apps** when you are
 happy.
 
-> **If you ever do rename the data directory**, be aware there are _two_ folders,
-> not one. Electron's `safeStorage` master key lives in a `Local State` file
-> inside Electron's own userData folder (`%APPDATA%\<productName>`), separate
-> from the app data folder holding `api-keys-vault.json`. Copy only the first and
-> every API key reports _"Stored key could not be decrypted"_ despite the vault
-> copying perfectly. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+Your API keys come across too. There are in fact _two_ folders involved, not
+one: Electron's `safeStorage` master key lives in a `Local State` file inside
+Electron's own userData folder (`%APPDATA%\<productName>`), separate from the app
+data folder holding `api-keys-vault.json`. Since 1.7.0 the app carries that key
+over itself on first launch — it copies rather than moves, never overwrites a key
+that is already there, and leaves the old install able to run.
+
+> **If you ever move data by hand**, remember both folders. Copy only the vault
+> and every API key reports _"Stored key could not be decrypted"_ despite the
+> vault having copied perfectly. See
+> [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 

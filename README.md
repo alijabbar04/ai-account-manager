@@ -27,7 +27,7 @@ Gemini and OpenRouter.
 
 > ### This repository's source of record is *formatted runtime JavaScript*, not TypeScript.
 
-Versions 1.3.0 through 1.5.0 were produced by editing the app's built output
+Versions 1.3.0 through 1.7.0 were produced by editing the app's built output
 directly and repacking it — the original TypeScript/React project for those
 releases no longer exists. What you see in `app/` is that runtime, recovered and
 formatted: readable, tested and reproducible, but not the original sources.
@@ -60,18 +60,35 @@ public.
 3. **Prerequisite:** [Claude Code](https://claude.com/claude-code) on your PATH
    (`claude --version`). The Codex CLI is optional — without it the GPT/Codex
    panel simply reports it cannot find Codex.
-4. **Import the account you already have:** *Add account → Import existing* →
+4. **Import the account you already have:** *+ Add account → Import existing* →
    point it at `C:\Users\<you>\.claude`.
-5. **Add another:** *Add account → Create new* → a terminal opens running
+5. **Add another:** *+ Add account → Create new* → a terminal opens running
    `claude auth login` → sign in in the browser. The card turns green by itself.
-6. **Work:** click **Open Claude** on whichever account you want to be. They run
-   side by side.
+6. **Work:** **Open in VS Code** on an account card starts a session as that
+   account, and the dashboard launchers — **New Claude Cowork**, **New Codex
+   chat**, **New VS Code Codex** — open the installed apps. Accounts run side by
+   side.
 
 Full walkthrough: [docs/INSTALL.md](docs/INSTALL.md).
 
 ---
 
-## What's in 1.5.0
+## What's in 1.7.0
+
+- **Global launchers** on the dashboard — New Claude Cowork, New Codex chat,
+  New VS Code Codex, Open in VS Code — validated against a fixed allowlist and
+  spawned as argument arrays, never through a shell string.
+- **Profile visibility**: hide accounts you are not using and bring them back
+  from **Manage profile visibility**, with an Undo.
+- **Other Accounts layout** as grid or full width, remembered across restarts.
+- **Usage that survives a bad refresh** — a failed poll no longer wipes the
+  limits already on screen, and retries back off from 30 seconds to an hour.
+- **The rename is data-safe.** Electron keeps the DPAPI master key for the API
+  key vault in a directory derived from the product name, so renaming the app
+  would have made every stored key undecryptable. The key is now carried across
+  once at startup; `npm run verify:safestorage` proves it end to end.
+
+Retained from 1.5.0:
 
 - A dedicated **Automation & Sessions** area with Permissions, Session launcher,
   and searchable/exportable redacted Activity views.
@@ -87,7 +104,7 @@ Full walkthrough: [docs/INSTALL.md](docs/INSTALL.md).
   cleanup, native helper packaging, Windows CI, and a documented capability
   matrix and architecture decision.
 
-Also retained from 1.4.1:
+Retained from 1.4.1:
 
 - **GPT/Codex vs Claude daily token history**, with 7, 30 and 90-day views.
 - **Reliable Windows Codex discovery** across Codex Desktop, npm, VS Code and
@@ -111,29 +128,30 @@ Also retained from 1.4.1:
 git clone https://github.com/alijabbar04/ai-account-manager.git
 cd ai-account-manager
 .\setup.ps1
+npm start
 ```
 
-`setup.ps1` checks Node 20+ and a .NET 8+ SDK, installs dependencies, and runs
-the JavaScript and native helper suites so you know the checkout is sound
-before you touch anything. End users do not need .NET; release builds bundle a
-self-contained helper.
+`setup.ps1` is idempotent and safe to re-run. It checks Node 20+ and a .NET 8+
+SDK, installs dependencies from the lockfile with `npm ci`, repairs the Electron
+binary if a proxy silently blocked its download, and runs the JavaScript and
+native helper suites so you know the checkout is sound before you touch
+anything. It never asks for or writes a credential.
 
-Run from source:
-
-```powershell
-npm run build:dir     # package to release\win-unpacked, then launch it
-```
+End users do not need .NET or Node at all — release builds bundle a
+self-contained helper. See [docs/INSTALL.md](docs/INSTALL.md).
 
 Build the installer:
 
 ```powershell
-.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.5.0.exe
+.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.7.0.exe
 ```
 
 | Command | What it does |
 |---|---|
+| `npm start` | Run the app from source |
 | `npm test` | Unit tests **and** runtime verification — run this before every commit |
 | `npm run verify` | Runtime verification only |
+| `npm run verify:safestorage` | Prove a product rename cannot orphan the API key vault |
 | `npm run automation:test` | Native recognition, trust, IPC, audit and settings tests |
 | `npm run automation:publish` | Self-contained win-x64 helper used by packaging |
 | `npm run automation:soak` | Measure helper CPU, working set, handles, threads and events |
@@ -141,9 +159,13 @@ Build the installer:
 | `npm run build:win` | NSIS installer |
 | `npm run release:manifest` | Generate `release/latest.json` for the update channel |
 | `npm run format` | Prettier across `app`, `scripts`, `tests`, `.github` |
+| `npm run format:check` | The formatting check CI runs |
 
-Node 22 is what the CI workflow uses. The workflow uses pnpm; the npm scripts
-work equally well locally.
+CI runs Node 22 on `windows-latest` and installs with `npm ci`, so
+`package-lock.json` is committed and must stay in step with `package.json`.
+
+Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) — this
+repository has one genuinely unusual property, described there and below.
 
 ### Layout
 
@@ -152,13 +174,19 @@ work equally well locally.
 | `app/dist-electron/main.cjs` | Electron main process — accounts, launcher, usage, Codex discovery, alerts, updates |
 | `app/dist-electron/preload.cjs` | The context-bridge surface exposed to the renderer |
 | `app/dist-electron/automation-*.cjs` | Automation settings, redaction, helper client and session launcher |
+| `app/dist-electron/launcher-domain.cjs` | Allowlisted launcher targets and project-path validation |
+| `app/dist-electron/usage-reliability-domain.cjs` | Retry backoff and snapshot merging for usage polls |
+| `app/dist-electron/safe-storage-continuity.cjs` | Carries the DPAPI master key across a product rename |
 | `app/dist/assets/` | React renderer runtime and styles |
 | `automation/` | .NET 8 Windows UIA helper, selector catalog, tests and synthetic harness |
 | `assets/USAGE_TRACKING_GUIDE.pdf` | The in-app 📖 guide, shipped as an unpacked extra resource |
 | `scripts/` | Runtime verification and release-manifest tooling |
 | `tests/` | Regression tests for alerts, update manifests and required runtime surfaces |
 | `build/icon.ico` | Application icon |
-| `.github/workflows/release.yml` | Windows build / sign / release workflow |
+| `build/installer.nsh` | NSIS uninstall hooks — stops the helper, clears startup entries |
+| `.github/workflows/ci.yml` | Format, test and package on every push and pull request |
+| `.github/workflows/security.yml` | Gitleaks secret scan, dependency audit, CodeQL |
+| `.github/workflows/release.yml` | Tagged build, sign, checksum and GitHub Release |
 
 ---
 
@@ -183,6 +211,11 @@ and stays on the machine that runs the app.
   them from encrypted repository secrets.
 - **All local state lives outside this repo**, in `%APPDATA%\ClaudeAccountManager`
   (see the note below).
+- **The rename cannot orphan your keys.** Electron keeps the `safeStorage`
+  master key in a directory derived from the product name. The app carries that
+  key across once at startup — copying, never moving, and never overwriting a
+  live one — so an upgrade from a Claude-Account-Manager-branded install keeps
+  its vault readable. `npm run verify:safestorage` proves it against real DPAPI.
 - **Automation is fail-closed.** It starts Off and Dry run, requires a risk
   acknowledgement, never drives secure/elevated/unknown surfaces, and keeps
   unverified provider selectors detection-only. Version 1.5.0 also refuses
@@ -232,6 +265,10 @@ Full detail and recovery steps: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.m
 
 ## Making changes
 
+The full loop — per-area test requirements, what must not change casually, and
+what never belongs in a commit — is in [CONTRIBUTING.md](CONTRIBUTING.md). The
+short version:
+
 1. **Branch.** `git checkout -b fix-codex-discovery`.
 2. **Edit the runtime directly** — `app/dist-electron/main.cjs` for main-process
    behaviour, `app/dist/assets/index-*.js` for UI. Remember nothing compiles into
@@ -256,13 +293,35 @@ Full detail and recovery steps: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.m
 
 ---
 
-## Update channel
+## Releasing
 
-Host the installer over HTTPS, then generate the manifest:
+Versions are semantic, and `package.json` is the single source of truth — the
+app, the installer, the artifact name and the update manifest all read from it.
+
+1. Bump `version` in `package.json` **and** `app/package.json`, and add a
+   `CHANGELOG.md` entry.
+2. `npm test`, then `.\build\build.ps1`, then install the result once. A
+   packaged build fails on things a dev run never exercises.
+3. Commit, then tag: `git tag v1.7.0 && git push origin main --tags`.
+
+The tag starts [`release.yml`](.github/workflows/release.yml), which refuses to
+build if the tag and `package.json` disagree, runs the full suite, packages the
+installer, writes `SHA256SUMS.txt`, generates `latest.json` pointing at the
+release asset, and publishes a GitHub Release with all three attached.
+
+**Code signing is optional and nothing is bundled here.** Without a certificate
+the installer is unsigned and SmartScreen warns; users can verify the download
+against `SHA256SUMS.txt`. To sign, add two repository secrets:
+`WINDOWS_CERTIFICATE_BASE64` (base64 of a `.pfx`) and
+`WINDOWS_CERTIFICATE_PASSWORD`. `electron-builder` picks them up as `CSC_LINK`
+and `CSC_KEY_PASSWORD` automatically.
+
+### Self-hosted update channel
+
+If you host installers yourself rather than on GitHub Releases:
 
 ```powershell
-$env:UPDATE_DOWNLOAD_URL='https://downloads.example.com/AI-Account-Manager-Setup-1.5.0.exe'
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.5.0.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.0.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.0.exe'
 ```
 
 Host `release/latest.json` over HTTPS and paste that URL into
@@ -277,6 +336,9 @@ an HTTPS download and a published SHA-256 checksum before offering an update.
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | When something fails: what it means and how to fix it |
 | [docs/AUTOMATION_AND_SESSIONS.md](docs/AUTOMATION_AND_SESSIONS.md) | Permission safety, session profiles, diagnostics, capability matrix and uninstall behavior |
 | [docs/architecture/automation-and-sessions.md](docs/architecture/automation-and-sessions.md) | Native helper, UIA, trust, IPC and authentication-routing ADR |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setting up, the edit/test loop, and what must not change casually |
+| [SECURITY.md](SECURITY.md) | Where every secret lives, reporting a vulnerability, known risks |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 | [assets/USAGE_TRACKING_GUIDE.pdf](assets/USAGE_TRACKING_GUIDE.pdf) | Why API usage pages can look empty — also the in-app 📖 guide |
 
 ## License

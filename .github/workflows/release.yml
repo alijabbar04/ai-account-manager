@@ -1,4 +1,4 @@
-name: Build signed Windows release
+name: Release Windows installer
 
 on:
   workflow_dispatch:
@@ -6,36 +6,102 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      # Needed to create the GitHub Release and upload its assets.
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - run: pnpm install --no-frozen-lockfile
-      - run: pnpm format:check
-      - run: pnpm test
-      - name: Build and sign installer
-        run: pnpm build:win
+
+      - run: npm ci
+
+      # A tag that disagrees with package.json would publish an installer whose
+      # in-app version does not match the release it came from.
+      - name: Check the tag matches package.json
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+              $tag = $env:GITHUB_REF -replace "^refs/tags/", ""
+              if ($tag -ne "v$version") {
+                  throw "Tag $tag does not match package.json version $version."
+              }
+          }
+          Write-Host "Releasing version $version"
+
+      - run: npm run format:check
+
+      - run: npm test
+
+      # Signing is optional. electron-builder signs when CSC_LINK is present and
+      # produces an unsigned installer when it is not; no certificate or
+      # password is ever stored in this repository. To sign, add repository
+      # secrets WINDOWS_CERTIFICATE_BASE64 (base64 of a .pfx) and
+      # WINDOWS_CERTIFICATE_PASSWORD. See SECURITY.md.
+      - name: Build installer
+        run: npm run build:win
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      - name: Generate secure update manifest
-        run: pnpm release:manifest
+
+      # The manifest's download URL must be HTTPS, so point it at the release
+      # asset this workflow is about to upload. The in-app updater then verifies
+      # the installer against this SHA-256 before offering it.
+      - name: Generate the update manifest
+        shell: pwsh
         env:
-          UPDATE_DOWNLOAD_URL: ${{ secrets.UPDATE_DOWNLOAD_URL }}
           RELEASE_NOTES: ${{ github.event.head_commit.message }}
-      - uses: actions/upload-artifact@v4
+        run: |
+          $version = $env:PACKAGE_VERSION
+          $installer = "release/AI-Account-Manager-Setup-$version.exe"
+          $tag = if ($env:GITHUB_REF -like "refs/tags/*") {
+              $env:GITHUB_REF -replace "^refs/tags/", ""
+          } else {
+              "v$version"
+          }
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/AI-Account-Manager-Setup-$version.exe"
+          npm run release:manifest -- $installer $url
+
+      - name: Publish SHA-256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release -Filter *.exe |
+              ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+              Set-Content release/SHA256SUMS.txt -Encoding ascii
+          Get-Content release/SHA256SUMS.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: ai-account-manager-windows
+          if-no-files-found: error
           path: |
             release/*.exe
             release/latest.json
+            release/SHA256SUMS.txt
+
+      - name: Create the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AI Account Manager ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/latest.json
+            release/SHA256SUMS.txt

@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/alijabbar04/ai-account-manager/security/advisories/new
+    about: Please report vulnerabilities privately, not as a public issue. See SECURITY.md.
+  - name: Installing, upgrading and first run
+    url: https://github.com/alijabbar04/ai-account-manager/blob/main/docs/INSTALL.md
+    about: Step-by-step install and setup instructions.
+  - name: Something is broken - start here
+    url: https://github.com/alijabbar04/ai-account-manager/blob/main/docs/TROUBLESHOOTING.md
+    about: Known failure modes and how to fix them.
