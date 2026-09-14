@@ -72,12 +72,18 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # 'languages' is plural and it matters: with the singular spelling the
+      # input is ignored, CodeQL auto-detects every language in the repository,
+      # and each job then fails trying to finalize a database for a language it
+      # was never asked to build.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          language: ${{ matrix.language }}
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'csharp' && 'manual' || 'none' }}
 
-      # The C# helper needs a real build; the JavaScript runtime does not.
+      # A manual build mode means the build has to happen here, between init
+      # and analyze. The JavaScript runtime is not compiled and needs none.
       - if: matrix.language == 'csharp'
         run: dotnet build automation/src/AIAccountManager.Automation/AIAccountManager.Automation.csproj --configuration Release
 
