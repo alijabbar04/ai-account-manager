@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "electron": "^37.2.6",
