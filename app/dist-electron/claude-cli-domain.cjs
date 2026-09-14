@@ -94,10 +94,13 @@ function resolveClaudeCli({
  */
 function claudeCliMissingMessage() {
   return [
-    "Claude Code was not found.",
-    "Install it from https://claude.com/claude-code, then reopen this app.",
-    "If it is already installed, its folder is missing from PATH - sign out and",
-    `back in, or set ${CLAUDE_CLI_PATH_ENV} to the full path of claude.exe.`,
+    "Claude Code was not found, so there is nothing to sign in to.",
+    "Install it with:  winget install --id Anthropic.ClaudeCode --exact",
+    "or from https://claude.com/claude-code - then fully quit this app,",
+    "including its tray icon, and reopen it.",
+    "If it is already installed, this app could not see it: a running program",
+    "keeps the environment it started with, so reopening usually fixes it.",
+    `Failing that, set ${CLAUDE_CLI_PATH_ENV} to the full path of claude.exe.`,
   ].join(" ");
 }
 

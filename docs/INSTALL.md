@@ -15,21 +15,42 @@ Two routes. **Almost everyone wants Option A.**
 ### What you need
 
 - A Windows 10 or Windows 11 PC (64-bit).
-- **Claude Code installed.** This app manages Claude Code accounts, so it cannot
-  do much without it. Press the Windows key, type `powershell`, press Enter, and
-  run:
-
-  ```powershell
-  claude --version
-  ```
-
-  If that prints a version you are ready. If not, install it from
-  <https://claude.com/claude-code>, then close and reopen PowerShell.
-
-- **The Codex CLI is optional.** Install it if you want the GPT/Codex usage
-  panel. Without it, that panel simply says it cannot find Codex; everything
-  else works normally.
 - **No GitHub account needed** — this repository is public.
+- **No administrator rights** — everything installs per-user.
+
+This app is a dashboard over three other programs:
+
+| Tool | | What it is for |
+|---|---|---|
+| **Claude Code** | required | The accounts this app manages *are* Claude Code profiles, and signing in runs `claude auth login` |
+| **Codex CLI** | optional | Powers the GPT / Codex usage panel |
+| **VS Code** | optional | **Open in VS Code** launches an account into it |
+
+**On a new machine, install them in one step.** Press the Windows key, type
+`powershell`, press Enter, and run:
+
+```powershell
+irm https://raw.githubusercontent.com/alijabbar04/ai-account-manager/main/scripts/install-prerequisites.ps1 | iex
+```
+
+It lists what is missing, shows you exactly which vendor packages it would
+install — Anthropic's, OpenAI's and Microsoft's own winget packages — and waits
+for you to say yes. Anything already installed is skipped, so it is safe to
+re-run. To see the report without installing anything, download it and run it
+with `-CheckOnly`.
+
+Prefer to do it yourself? These are the same packages:
+
+```powershell
+winget install --id Anthropic.ClaudeCode --exact          # required
+winget install --id OpenAI.Codex --exact                  # optional
+winget install --id Microsoft.VisualStudioCode --exact    # optional
+```
+
+> **Then close PowerShell and open a new window.** A program that is already
+> running keeps the environment it started with, so it cannot see anything
+> installed since — this is the single most common reason sign-in still fails
+> right after installing Claude Code.
 
 ### Step 1 — Download
 

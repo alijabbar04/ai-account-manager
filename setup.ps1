@@ -167,6 +167,15 @@ Write-Host "IMPORTANT: this project's source of record is the FORMATTED RUNTIME"
 Write-Host "in app\ - there is no TypeScript build step. Edit app\dist-electron\" -ForegroundColor Yellow
 Write-Host "main.cjs and app\dist\assets\*.js directly, and run 'npm test' after." -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Runtime prerequisite: Claude Code on your PATH ('claude --version')." -ForegroundColor Yellow
+# --- Runtime prerequisites ------------------------------------------------
+# Not needed to build, but the app does very little without them. Report only:
+# installing other vendors' software is an explicit choice, not a side effect
+# of setting up a checkout.
+Write-Host ""
+& (Join-Path $PSScriptRoot "scripts\install-prerequisites.ps1") -CheckOnly
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Install them with:  .\scripts\install-prerequisites.ps1" -ForegroundColor Yellow
+    Write-Host ""
+}
 Write-Host "Close any running copy of the app before building - it takes a" -ForegroundColor Yellow
 Write-Host "single-instance lock and a second copy exits immediately." -ForegroundColor Yellow

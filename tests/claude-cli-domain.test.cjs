@@ -111,11 +111,21 @@ test("a missing environment produces no half-formed paths", () => {
   assert.deepEqual(claudeCliCandidates({}, path), []);
 });
 
-test("the failure message names both fixes the user can apply", () => {
+test("the failure message gives a runnable install command, not just advice", () => {
   const message = claudeCliMissingMessage();
 
+  // Ordered by how likely each is to be the actual fix.
+  assert.match(
+    message,
+    /winget install --id Anthropic\.ClaudeCode/,
+    "a copy-pasteable install command is the fastest remedy",
+  );
   assert.match(message, /claude\.com\/claude-code/);
-  assert.match(message, /PATH/);
+  assert.match(
+    message,
+    /reopen/i,
+    "restarting is the fix when it is installed but the app cannot see it",
+  );
   assert.match(message, new RegExp(CLAUDE_CLI_PATH_ENV));
 });
 

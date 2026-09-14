@@ -57,9 +57,15 @@ public.
    [Releases](../../releases) page.
 2. **Install.** Per-user, no admin rights. Windows will warn that the publisher
    is unrecognised because the build is unsigned — **More info** → **Run anyway**.
-3. **Prerequisite:** [Claude Code](https://claude.com/claude-code) on your PATH
-   (`claude --version`). The Codex CLI is optional — without it the GPT/Codex
-   panel simply reports it cannot find Codex.
+3. **Install what it drives.** Claude Code is required; the Codex CLI and VS Code
+   are optional. One step, no admin rights, skips anything you already have:
+
+   ```powershell
+   irm https://raw.githubusercontent.com/alijabbar04/ai-account-manager/main/scripts/install-prerequisites.ps1 | iex
+   ```
+
+   It shows you what is missing and which vendor packages it would install, and
+   waits for a yes.
 4. **Import the account you already have:** *+ Add account → Import existing* →
    point it at `C:\Users\<you>\.claude`.
 5. **Add another:** *+ Add account → Create new* → a terminal opens running

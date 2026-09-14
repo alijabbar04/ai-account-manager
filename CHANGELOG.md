@@ -35,6 +35,21 @@ not full histories.
 
 ### Added
 
+- **`scripts/install-prerequisites.ps1` installs what the app drives.** The app
+  is a dashboard over Claude Code (required), the Codex CLI and VS Code
+  (optional), and a new machine has none of them. One command now reports what
+  is missing and installs it from each vendor's own winget package - Anthropic
+  PBC, OpenAI Inc., Microsoft Corp.
+
+  Consent is explicit: without `-Yes` it lists exactly what it would install and
+  waits. Per-user scope is preferred so no administrator rights are needed, and
+  it never requests elevation silently. Re-running is safe - anything present is
+  skipped. Detection deliberately does not trust `$env:PATH`, which is the thing
+  that goes stale; it probes real install locations and the registry PATH.
+
+  `setup.ps1` reports prerequisite status at the end of a developer setup, and
+  points at the script rather than installing other vendors' software as a side
+  effect of preparing a checkout.
 - `scripts/diagnose-claude-cli.ps1` — a read-only diagnosis for the error
   above, runnable in one line on any affected machine. It reports the installed
   app version, whether that version resolves the CLI by itself, where
