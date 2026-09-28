@@ -90,3 +90,39 @@ test("unverifiable credentials do not present stale local email as authenticated
   );
   assert.equal(normalizeOAuthProfile({ account: { email: "invalid" } }), null);
 });
+
+test("concurrent checks share one request, and a rotated token never reuses it", async () => {
+  const releases = [];
+  const seen = [];
+  const verifier = new OAuthIdentityVerifier({
+    fetchImpl: (_url, options) => {
+      seen.push(options.headers.Authorization);
+      return new Promise((resolve) => {
+        releases.push(() =>
+          resolve({
+            ok: true,
+            json: async () =>
+              options.headers.Authorization === "Bearer old-token"
+                ? profile("old@example.com", "old")
+                : profile("new@example.com", "new"),
+          }),
+        );
+      });
+    },
+  });
+  const first = verifier.verify("C:\work", "old-token");
+  const shared = verifier.verify("C:\work", "old-token");
+  const rotated = verifier.verify("C:\work", "new-token");
+  assert.deepEqual(seen, ["Bearer old-token", "Bearer new-token"]);
+  releases[1]();
+  assert.equal((await rotated).email, "new@example.com");
+  releases[0]();
+  assert.equal((await first).email, "old@example.com");
+  assert.equal(await shared, await first);
+  // The late old-token reply must not evict or replace the newer entry.
+  assert.equal(
+    (await verifier.verify("C:\work", "new-token")).email,
+    "new@example.com",
+  );
+  assert.equal(seen.length, 2);
+});

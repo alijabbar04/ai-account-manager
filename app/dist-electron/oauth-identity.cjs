@@ -1,7 +1,5 @@
 "use strict";
 
-const { createHash } = require("node:crypto");
-
 const OAUTH_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 const SUCCESS_TTL_MS = 60 * 60 * 1000;
 const FAILURE_TTL_MS = 60 * 1000;
@@ -66,15 +64,19 @@ class OAuthIdentityVerifier {
 
   async verify(configDir, accessToken) {
     if (typeof accessToken !== "string" || !accessToken) return null;
-    const fingerprint = createHash("sha256").update(accessToken).digest("hex");
+    // The cache is keyed by the token itself, held only in memory for as long
+    // as this process already holds it. A fast hash of it would be no safer,
+    // and static analysis rightly reads one as an unsalted password hash.
     const cached = this.cache.get(configDir);
-    if (cached?.fingerprint === fingerprint && cached.expiresAt > this.now()) {
+    if (cached?.accessToken === accessToken && cached.expiresAt > this.now()) {
       return cached.profile;
     }
-    const key = `${configDir}\0${fingerprint}`;
-    if (this.pending.has(key)) return this.pending.get(key);
+    const inFlight = this.pending.get(configDir);
+    if (inFlight?.accessToken === accessToken) return inFlight.request;
 
-    const request = (async () => {
+    const entry = { accessToken, request: null };
+    this.pending.set(configDir, entry);
+    entry.request = (async () => {
       let profile = null;
       try {
         const response = await this.fetchImpl(OAUTH_PROFILE_URL, {
@@ -88,21 +90,24 @@ class OAuthIdentityVerifier {
       } catch {
         // Network errors should not make stale local account metadata authoritative.
       }
-      if (!profile && cached?.fingerprint === fingerprint && cached.profile) {
+      if (!profile && cached?.accessToken === accessToken && cached.profile) {
         profile = cached.profile;
       }
-      this.cache.set(configDir, {
-        fingerprint,
-        profile,
-        expiresAt: this.now() + (profile ? SUCCESS_TTL_MS : FAILURE_TTL_MS),
-      });
+      // A late reply for a token that has since rotated must not overwrite
+      // the entry of the request that replaced it.
+      if (this.pending.get(configDir) === entry) {
+        this.cache.set(configDir, {
+          accessToken,
+          profile,
+          expiresAt: this.now() + (profile ? SUCCESS_TTL_MS : FAILURE_TTL_MS),
+        });
+      }
       return profile;
     })();
-    this.pending.set(key, request);
     try {
-      return await request;
+      return await entry.request;
     } finally {
-      this.pending.delete(key);
+      if (this.pending.get(configDir) === entry) this.pending.delete(configDir);
     }
   }
 }
