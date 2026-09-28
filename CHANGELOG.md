@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.2] — unreleased
+
+### Fixed
+
+- Claude account cards now verify the account owning each OAuth token. A stale
+  `.claude.json` can no longer show a personal email over work-account usage.
+- Claude profile launches and their dedicated VS Code profiles no longer inherit
+  a machine-wide `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, which could
+  override the selected account's stored login.
+
 ## [1.7.1] — unreleased
 
 ### Fixed

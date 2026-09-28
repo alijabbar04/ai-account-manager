@@ -50,8 +50,10 @@ var {
   CODEX_COMMAND_HELP_URL,
   CODEX_NEW_CHAT_URL,
   VSCODE_CODEX_PANEL_URL,
+  buildClaudeProfileEnvironment,
   buildVsCodeWindowArgs,
   extensionStateFromStorage,
+  mergeClaudeVSCodeSettings,
   normalizeHiddenProfileIds,
   normalizeOtherAccountsLayout,
   parseExtensionList,
@@ -67,6 +69,10 @@ var {
   parseRetryAfter,
   retainFailedSnapshot,
 } = require("./usage-reliability-domain.cjs");
+var {
+  OAuthIdentityVerifier,
+  mergeVerifiedIdentity,
+} = require("./oauth-identity.cjs");
 
 function sanitizeReviewedDiagnosticReport(input) {
   if (!input || typeof input !== "object" || !Array.isArray(input.elements)) {
@@ -396,20 +402,11 @@ function linkSharedState(profileDir) {
 
 // electron/lib/launcher.ts
 function envFor(profile) {
-  const env = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (
-      k.startsWith("ELECTRON_") ||
-      k === "NODE_OPTIONS" ||
-      k === "CLAUDE_CONFIG_DIR"
-    )
-      continue;
-    env[k] = v;
-  }
-  if (!isHomeDefaultDir(profile.configDir)) {
-    env.CLAUDE_CONFIG_DIR = profile.configDir;
-  }
-  return env;
+  return buildClaudeProfileEnvironment(
+    process.env,
+    profile.configDir,
+    isHomeDefaultDir(profile.configDir),
+  );
 }
 function psSingleQuote2(s) {
   return `'${s.replace(/'/g, "''")}'`;
@@ -755,17 +752,7 @@ function writeVSCodeProfileSettings(profileName, profile) {
       settings = JSON.parse(fs4.readFileSync(profileSettingsFile, "utf8"));
     }
     const configDir = profile.configDir || canonicalDir();
-    const variables = Array.isArray(settings["claudeCode.environmentVariables"])
-      ? settings["claudeCode.environmentVariables"].filter(
-          (item) => item?.name !== "CLAUDE_CONFIG_DIR",
-        )
-      : [];
-    variables.push({ name: "CLAUDE_CONFIG_DIR", value: configDir });
-    settings["claudeCode.environmentVariables"] = variables;
-    settings["terminal.integrated.env.windows"] = {
-      ...(settings["terminal.integrated.env.windows"] ?? {}),
-      CLAUDE_CONFIG_DIR: configDir,
-    };
+    settings = mergeClaudeVSCodeSettings(settings, configDir);
     fs4.writeFileSync(
       profileSettingsFile,
       `${JSON.stringify(settings, null, 2)}\n`,
@@ -3513,6 +3500,7 @@ var Backend = class {
     });
   }
   usage = new UsageService();
+  oauthIdentity = new OAuthIdentityVerifier();
   api = new ApiService();
   defaultDir = null;
   lastFocusRefresh = 0;
@@ -4335,7 +4323,17 @@ var Backend = class {
     const hiddenProfileIds = new Set(loadSettings().hiddenProfileIds);
     return Promise.all(
       profiles.map(async (profile) => {
-        const identity = readIdentity(profile.configDir);
+        const localIdentity = readIdentity(profile.configDir);
+        const oauth = readJson(
+          path11.join(profile.configDir, ".credentials.json"),
+        )?.claudeAiOauth;
+        const verifiedIdentity = localIdentity.loggedIn
+          ? await this.oauthIdentity.verify(
+              profile.configDir,
+              oauth?.accessToken,
+            )
+          : null;
+        const identity = mergeVerifiedIdentity(localIdentity, verifiedIdentity);
         const activity = readActivity(profile.configDir);
         let usage = this.usage.getCached(profile.id);
         if (usage && !usage.ok && identity.loggedIn) {
