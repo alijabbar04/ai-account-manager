@@ -39,6 +39,9 @@ const files = {
     "dist-electron",
     "safe-storage-continuity.cjs",
   ),
+  phoneDomain: path.join(root, "app", "dist-electron", "phone-domain.cjs"),
+  phoneServer: path.join(root, "app", "dist-electron", "phone-server.cjs"),
+  phoneAssets: path.join(root, "mobile", "android", "assets", "app.js"),
   claudeCliDomain: path.join(
     root,
     "app",
@@ -74,6 +77,9 @@ for (const file of [
   files.usageReliabilityDomain,
   files.safeStorageContinuity,
   files.claudeCliDomain,
+  files.phoneDomain,
+  files.phoneServer,
+  files.phoneAssets,
 ]) {
   const check = spawnSync(process.execPath, ["--check", file], {
     encoding: "utf8",
@@ -104,9 +110,24 @@ for (const channel of [
   "profiles:visibility:setHidden",
   "profiles:otherAccountsLayout:get",
   "profiles:otherAccountsLayout:set",
+  "phone:get",
+  "phone:set",
+  "phone:pair",
+  "phone:cancelPairing",
+  "phone:unpair",
 ]) {
   assert.ok(main.includes(channel), `Main process is missing ${channel}`);
 }
+assert.ok(
+  main.includes('require("qrcode-generator")') &&
+    JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
+      .dependencies["qrcode-generator"],
+  "Phone pairing needs qrcode-generator as a runtime dependency",
+);
+assert.ok(
+  /encryptString\(token\)/.test(main) && !/secret: token\b/.test(main),
+  "The phone device token must only be stored DPAPI-encrypted",
+);
 for (const discoveryPath of [
   '"OpenAI", "Codex", "bin"',
   '"openai.chatgpt-"',
@@ -129,6 +150,7 @@ for (const bridge of [
   "launchVSCode",
   "launchers",
   "visibility",
+  "phone",
   "otherAccountsLayout",
 ]) {
   assert.ok(preload.includes(bridge), `Preload bridge is missing ${bridge}`);
@@ -149,6 +171,8 @@ for (const feature of [
   "Profile visibility",
   "Manage profile visibility",
   "Full width",
+  "Phone companion",
+  "Share usage with my phone",
 ]) {
   assert.ok(renderer.includes(feature), `Renderer is missing ${feature}`);
 }

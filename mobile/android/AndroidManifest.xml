@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AI Account Usage: the read-only phone companion for AI Account Manager.
+  Cleartext HTTP is allowed because the app only talks to the paired PC's
+  Tailscale address (enforced in MainActivity), inside the tailnet's
+  WireGuard tunnel.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.aiaccountmanager.usage"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="uiMode|orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- The pairing QR code on the PC encodes aamusage://pair?... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="aamusage" android:host="pair" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

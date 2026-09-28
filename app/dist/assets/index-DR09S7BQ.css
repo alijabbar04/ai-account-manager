@@ -1457,10 +1457,12 @@ code {
   color: var(--ink);
   background: var(--page);
 }
-.visibility-settings {
+.visibility-settings,
+.phone-settings {
   max-width: 760px;
 }
-.visibility-settings .panel-title {
+.visibility-settings .panel-title,
+.phone-settings .panel-title {
   margin-bottom: 0;
 }
 .visibility-list {
@@ -2700,5 +2702,82 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .app-shell {
     transition: none;
+  }
+}
+
+/* Phone companion settings */
+.phone-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-status .dot {
+  width: 8px;
+  height: 8px;
+}
+.phone-device-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.phone-device-row > span {
+  flex: 1;
+  min-width: 200px;
+}
+.phone-pairing {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+.phone-pairing-qr {
+  width: 176px;
+  height: 176px;
+  flex: none;
+  border-radius: 10px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+.phone-pairing-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.phone-pairing-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 5px 14px;
+  font-size: 13px;
+}
+.phone-pairing-fields dt {
+  color: var(--muted);
+}
+.phone-pairing-fields dd {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.phone-pairing-code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+.phone-pairing-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 720px) {
+  .phone-pairing {
+    flex-direction: column;
   }
 }

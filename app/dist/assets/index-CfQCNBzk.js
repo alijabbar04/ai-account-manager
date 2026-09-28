@@ -19167,6 +19167,238 @@ function ProfileVisibilitySettings({ showToast: f }) {
                 }),
         ],
       }),
+      i.jsx(PhoneCompanionSettings, { showToast: f }),
+    ],
+  });
+}
+function PhoneCompanionSettings({ showToast: f }) {
+  const [view, setView] = q.useState(null),
+    [busy, setBusy] = q.useState(null),
+    [clock, setClock] = q.useState(() => Date.now());
+  q.useEffect(() => {
+    window.cam.phone.get().then(setView);
+    return window.cam.phone.onChanged(setView);
+  }, []);
+  const expiresAt = view?.pairing?.expiresAt ?? null;
+  // Count the pairing code down, then ask for a fresh view once it lapses.
+  q.useEffect(() => {
+    if (!expiresAt) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setClock(now);
+      if (now >= expiresAt) window.cam.phone.get().then(setView);
+    }, 1e3);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+  const run = async (kind, action) => {
+      setBusy(kind);
+      try {
+        const result = await action();
+        result?.ok === false
+          ? f(result.error ?? "That did not work.")
+          : setView(result?.view ?? result);
+      } finally {
+        setBusy(null);
+      }
+    },
+    status = view?.status ?? { state: "off" },
+    statusKind = !view?.enabled
+      ? "off"
+      : status.state === "listening"
+        ? "ok"
+        : status.state === "error"
+          ? "crit"
+          : "warn",
+    statusText = !view
+      ? "Loading…"
+      : !view.enabled
+        ? "Off"
+        : status.state === "listening"
+          ? `Reachable at ${status.host}:${status.port} on your Tailscale network`
+          : status.state === "waiting"
+            ? "Waiting for Tailscale — connect Tailscale on this PC"
+            : status.state === "error"
+              ? status.error
+              : "Starting…",
+    remaining = view?.pairing ? Math.max(0, view.pairing.expiresAt - clock) : 0,
+    countdown = `${Math.floor(remaining / 6e4)}:${String(Math.floor(remaining / 1e3) % 60).padStart(2, "0")}`;
+  return i.jsxs("section", {
+    className: "panel phone-settings",
+    "aria-labelledby": "phone-settings-title",
+    children: [
+      i.jsx("div", {
+        className: "panel-head-row",
+        children: i.jsxs("div", {
+          children: [
+            i.jsx("h2", {
+              className: "panel-title",
+              id: "phone-settings-title",
+              children: "Phone companion",
+            }),
+            i.jsxs("p", {
+              className: "view-sub phone-status",
+              children: [
+                i.jsx("span", {
+                  className: "dot",
+                  "data-kind": statusKind,
+                  "aria-hidden": "true",
+                }),
+                statusText,
+              ],
+            }),
+          ],
+        }),
+      }),
+      i.jsx("p", {
+        className: "hint",
+        children:
+          "See your Claude and GPT usage on your Android phone, anywhere, over your Tailscale network. The phone only receives usage numbers, plan names and account emails — never tokens or passwords.",
+      }),
+      i.jsxs("div", {
+        className: "visibility-list",
+        children: [
+          i.jsxs("label", {
+            className: "visibility-row",
+            children: [
+              i.jsxs("span", {
+                className: "visibility-row-copy",
+                children: [
+                  i.jsx("strong", { children: "Share usage with my phone" }),
+                  i.jsx("span", {
+                    children:
+                      "Listens on this PC's Tailscale address only, never your local network or the internet.",
+                  }),
+                ],
+              }),
+              i.jsx("input", {
+                type: "checkbox",
+                role: "switch",
+                checked: Boolean(view?.enabled),
+                disabled: !view || busy !== null,
+                "aria-label": "Share usage with my phone",
+                onChange: (event) =>
+                  run("enabled", () =>
+                    window.cam.phone.set({ enabled: event.target.checked }),
+                  ),
+              }),
+            ],
+          }),
+          view?.enabled &&
+            i.jsxs("label", {
+              className: "visibility-row",
+              children: [
+                i.jsxs("span", {
+                  className: "visibility-row-copy",
+                  children: [
+                    i.jsx("strong", {
+                      children: "Keep running in the tray when closed",
+                    }),
+                    i.jsx("span", {
+                      children:
+                        "Your phone only gets new numbers while this app is running.",
+                    }),
+                  ],
+                }),
+                i.jsx("input", {
+                  type: "checkbox",
+                  role: "switch",
+                  checked: Boolean(view.keepRunning),
+                  disabled: busy !== null,
+                  "aria-label": "Keep running in the tray when closed",
+                  onChange: (event) =>
+                    run("keepRunning", () =>
+                      window.cam.phone.set({
+                        keepRunning: event.target.checked,
+                      }),
+                    ),
+                }),
+              ],
+            }),
+        ],
+      }),
+      view?.enabled &&
+        i.jsxs("div", {
+          className: "phone-device-row",
+          children: [
+            i.jsx("span", {
+              children: view.device
+                ? `Paired with ${view.device.name}${view.device.pairedAt ? ` since ${new Date(view.device.pairedAt).toLocaleDateString()}` : ""}`
+                : "No phone paired yet.",
+            }),
+            view.device &&
+              i.jsx("button", {
+                className: "btn btn-small",
+                disabled: busy !== null,
+                onClick: () => run("unpair", () => window.cam.phone.unpair()),
+                children: "Unpair",
+              }),
+            status.state === "listening" &&
+              !view.pairing &&
+              i.jsx("button", {
+                className: view.device ? "btn btn-small" : "btn btn-primary",
+                disabled: busy !== null,
+                onClick: () => run("pair", () => window.cam.phone.pair()),
+                children: view.device
+                  ? "Pair a different phone"
+                  : "Pair a phone",
+              }),
+          ],
+        }),
+      view?.enabled &&
+        view.pairing &&
+        i.jsxs("div", {
+          className: "phone-pairing",
+          children: [
+            i.jsx("img", {
+              className: "phone-pairing-qr",
+              src: view.pairing.qrDataUrl,
+              alt: "Pairing QR code for the AI Account Usage phone app",
+            }),
+            i.jsxs("div", {
+              className: "phone-pairing-copy",
+              children: [
+                i.jsx("strong", {
+                  children: "Scan this with your phone's camera",
+                }),
+                i.jsx("p", {
+                  className: "hint",
+                  children:
+                    "It opens AI Account Usage and pairs it. Or open the app and enter these details:",
+                }),
+                i.jsxs("dl", {
+                  className: "phone-pairing-fields",
+                  children: [
+                    i.jsx("dt", { children: "PC address" }),
+                    i.jsx("dd", { children: status.host }),
+                    i.jsx("dt", { children: "Port" }),
+                    i.jsx("dd", { children: status.port }),
+                    i.jsx("dt", { children: "Code" }),
+                    i.jsx("dd", {
+                      className: "phone-pairing-code",
+                      children: view.pairing.code,
+                    }),
+                  ],
+                }),
+                i.jsxs("div", {
+                  className: "phone-pairing-foot",
+                  children: [
+                    i.jsx("span", {
+                      className: "hint",
+                      children: `Code expires in ${countdown}`,
+                    }),
+                    i.jsx("button", {
+                      className: "btn btn-small",
+                      disabled: busy !== null,
+                      onClick: () =>
+                        run("cancel", () => window.cam.phone.cancelPairing()),
+                      children: "Cancel",
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        }),
     ],
   });
 }

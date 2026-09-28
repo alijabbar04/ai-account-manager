@@ -75,6 +75,25 @@ var {
   mergeVerifiedIdentity,
 } = require("./oauth-identity.cjs");
 var { describeClaudePlan } = require("./plan-domain.cjs");
+var {
+  PAIRING_CODE_TTL_MS,
+  buildPairingLink,
+  buildPhoneSnapshot,
+  createPairingCode,
+  findTailscaleAddress,
+  formatPairingCode,
+  normalizePhoneSettings,
+} = require("./phone-domain.cjs");
+var { PhoneSyncServer } = require("./phone-server.cjs");
+var qrcodeGenerator = require("qrcode-generator");
+
+function pairingQrDataUrl(text) {
+  const qr = qrcodeGenerator(0, "M");
+  qr.addData(text);
+  qr.make();
+  const svg = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
 
 function sanitizeReviewedDiagnosticReport(input) {
   if (!input || typeof input !== "object" || !Array.isArray(input.elements)) {
@@ -3394,6 +3413,7 @@ function loadSettings() {
     otherAccountsLayout: normalizeOtherAccountsLayout(
       saved.otherAccountsLayout,
     ),
+    phone: normalizePhoneSettings(saved.phone),
   };
   if (JSON.stringify(saved) !== JSON.stringify(normalized)) {
     writeJsonAtomic(settingsFile(), normalized);
@@ -3505,6 +3525,11 @@ var Backend = class {
   lastFocusRefresh = 0;
   usageRetryTimers = new Map();
   gptUsage = null;
+  phoneServer = null;
+  phoneStatus = { state: "off" };
+  phoneTokenCache = null;
+  phoneWatch = null;
+  phoneApplying = Promise.resolve();
   updateState = { checking: false, checkedAt: null, update: null, error: null };
   guideWin = null;
   registeredEmergencyHotkey = null;
@@ -3525,7 +3550,9 @@ var Backend = class {
     this.registerApiKeyHandlers();
     this.registerSkillsHandlers();
     this.registerAutomationHandlers();
+    this.registerPhoneHandlers();
     await this.applyAutomationSettings(loadSettings().automation, false);
+    void this.applyPhoneSettings();
     setInterval(() => void this.refreshAll(), POLL_INTERVAL_MS);
     setInterval(() => void this.refreshApiKeys(), API_POLL_INTERVAL_MS);
     setInterval(() => void this.refreshGptUsage(), POLL_INTERVAL_MS);
@@ -4233,7 +4260,189 @@ var Backend = class {
       },
     );
   }
+  // --- Phone companion ------------------------------------------------------
+  phoneDeviceToken() {
+    if (!this.phoneTokenCache) {
+      const secret = loadSettings().phone.device?.secret;
+      let value = null;
+      if (secret) {
+        try {
+          value = import_electron4.safeStorage.decryptString(
+            Buffer.from(secret, "base64"),
+          );
+        } catch {}
+      }
+      this.phoneTokenCache = { value };
+    }
+    return this.phoneTokenCache.value;
+  }
+  ensurePhoneServer() {
+    this.phoneServer ??= new PhoneSyncServer({
+      getSnapshot: async () =>
+        buildPhoneSnapshot({
+          states: await this.buildStates(),
+          gptUsage: this.gptUsage,
+        }),
+      requestRefresh: () =>
+        Promise.allSettled([this.refreshAll(), this.refreshGptUsage()]),
+      getDeviceToken: () => this.phoneDeviceToken(),
+      onPaired: ({ token, deviceName }) => {
+        // Only the DPAPI-encrypted form is written to disk.
+        const secret = import_electron4.safeStorage
+          .encryptString(token)
+          .toString("base64");
+        const phone = loadSettings().phone;
+        saveSettings({
+          phone: {
+            ...phone,
+            device: { name: deviceName, pairedAt: Date.now(), secret },
+          },
+        });
+        this.phoneTokenCache = { value: token };
+        this.notifyPhoneChanged();
+      },
+    });
+    return this.phoneServer;
+  }
+  applyPhoneSettings() {
+    // Serialized: the 30-second Tailscale watch and IPC calls can overlap.
+    this.phoneApplying = this.phoneApplying
+      .then(() => this.applyPhoneSettingsNow())
+      .catch(() => {});
+    return this.phoneApplying;
+  }
+  async applyPhoneSettingsNow() {
+    const settings = loadSettings().phone;
+    const server = this.ensurePhoneServer();
+    const before = JSON.stringify(this.phoneStatus);
+    if (!settings.enabled) {
+      clearInterval(this.phoneWatch);
+      this.phoneWatch = null;
+      await server.close();
+      this.phoneStatus = { state: "off" };
+    } else {
+      // Tailscale can connect after the app starts, or change address.
+      this.phoneWatch ??= setInterval(
+        () => void this.applyPhoneSettings(),
+        30e3,
+      );
+      const host = findTailscaleAddress();
+      const current = server.address;
+      if (!host) {
+        await server.close();
+        this.phoneStatus = { state: "waiting", port: settings.port };
+      } else if (
+        !server.listening ||
+        current?.host !== host ||
+        current?.port !== settings.port
+      ) {
+        await server.close();
+        try {
+          await server.listen(host, settings.port);
+          this.phoneStatus = { state: "listening", host, port: settings.port };
+        } catch (err) {
+          this.phoneStatus = {
+            state: "error",
+            host,
+            port: settings.port,
+            error:
+              err?.code === "EADDRINUSE"
+                ? `Port ${settings.port} is already in use on this PC.`
+                : `Could not listen on ${host}:${settings.port}: ${err?.message}`,
+          };
+        }
+      }
+    }
+    if (JSON.stringify(this.phoneStatus) !== before) this.notifyPhoneChanged();
+  }
+  phoneView() {
+    const settings = loadSettings().phone;
+    const status = this.phoneStatus;
+    const pairing =
+      status.state === "listening" ? this.phoneServer?.activePairing() : null;
+    let pairingView = null;
+    if (pairing) {
+      const link = buildPairingLink({
+        host: status.host,
+        port: status.port,
+        code: pairing.code,
+      });
+      pairingView = {
+        code: formatPairingCode(pairing.code),
+        link,
+        qrDataUrl: pairingQrDataUrl(link),
+        expiresAt: pairing.expiresAt,
+      };
+    }
+    return {
+      enabled: settings.enabled,
+      keepRunning: settings.keepRunning,
+      port: settings.port,
+      status,
+      device: settings.device
+        ? { name: settings.device.name, pairedAt: settings.device.pairedAt }
+        : null,
+      pairing: pairingView,
+      encryptionAvailable: isEncryptionAvailable(),
+    };
+  }
+  notifyPhoneChanged() {
+    this.getWindow()?.webContents.send("phone:changed", this.phoneView());
+  }
+  registerPhoneHandlers() {
+    import_electron4.ipcMain.handle("phone:get", () => this.phoneView());
+    import_electron4.ipcMain.handle("phone:set", async (_e, patch) => {
+      const current = loadSettings().phone;
+      saveSettings({
+        phone: normalizePhoneSettings({
+          ...current,
+          enabled:
+            typeof patch?.enabled === "boolean"
+              ? patch.enabled
+              : current.enabled,
+          keepRunning:
+            typeof patch?.keepRunning === "boolean"
+              ? patch.keepRunning
+              : current.keepRunning,
+        }),
+      });
+      await this.applyPhoneSettings();
+      syncTray();
+      return this.phoneView();
+    });
+    import_electron4.ipcMain.handle("phone:pair", () => {
+      if (!isEncryptionAvailable()) {
+        return {
+          ok: false,
+          error:
+            "Windows could not provide encrypted storage for the pairing key.",
+        };
+      }
+      if (this.phoneStatus.state !== "listening" || !this.phoneServer) {
+        return {
+          ok: false,
+          error:
+            "Phone sync is not reachable yet. Connect Tailscale on this PC, then try again.",
+        };
+      }
+      this.phoneServer.startPairing(createPairingCode(), PAIRING_CODE_TTL_MS);
+      return { ok: true, view: this.phoneView() };
+    });
+    import_electron4.ipcMain.handle("phone:cancelPairing", () => {
+      this.phoneServer?.cancelPairing();
+      return this.phoneView();
+    });
+    import_electron4.ipcMain.handle("phone:unpair", () => {
+      const phone = loadSettings().phone;
+      saveSettings({ phone: { ...phone, device: null } });
+      this.phoneTokenCache = null;
+      this.notifyPhoneChanged();
+      return this.phoneView();
+    });
+  }
   async shutdown() {
+    clearInterval(this.phoneWatch);
+    await this.phoneServer?.close();
     if (this.registeredEmergencyHotkey) {
       import_electron4.globalShortcut.unregister(
         this.registeredEmergencyHotkey,
@@ -4704,6 +4913,22 @@ if (!import_electron5.app.requestSingleInstanceLock()) {
     showMainWindow();
   });
 }
+// Automation monitoring and phone sync both need the app alive after its
+// window closes; either keeps it running in the tray.
+function backgroundReasons(settings = loadSettings()) {
+  return {
+    automation: Boolean(
+      settings.automation.automationEnabled &&
+      settings.automation.runInBackground,
+    ),
+    phone: Boolean(settings.phone.enabled && settings.phone.keepRunning),
+  };
+}
+function keepsRunningInBackground(settings) {
+  const reasons = backgroundReasons(settings);
+  return reasons.automation || reasons.phone;
+}
+var toldAboutTray = false;
 function createWindow() {
   win = new import_electron5.BrowserWindow({
     width: 1120,
@@ -4730,15 +4955,19 @@ function createWindow() {
     startInBackground = false;
   });
   win.on("close", (event) => {
-    const automation = loadSettings().automation;
-    if (
-      !isQuitting &&
-      automation.automationEnabled &&
-      automation.runInBackground
-    ) {
+    const settings = loadSettings();
+    if (!isQuitting && keepsRunningInBackground(settings)) {
       event.preventDefault();
       win?.hide();
       syncTray();
+      if (!toldAboutTray && backgroundReasons(settings).phone) {
+        toldAboutTray = true;
+        tray?.displayBalloon({
+          title: "Still syncing to your phone",
+          content:
+            "AI Account Manager keeps running in the tray. Right-click its icon to quit.",
+        });
+      }
     }
   });
   win.on("closed", () => (win = null));
@@ -4763,8 +4992,10 @@ function showMainWindow() {
 }
 function syncTray() {
   if (!import_electron5.app.isReady()) return;
-  const automation = loadSettings().automation;
-  const needed = automation.automationEnabled && automation.runInBackground;
+  const settings = loadSettings();
+  const automation = settings.automation;
+  const reasons = backgroundReasons(settings);
+  const needed = reasons.automation || reasons.phone;
   if (!needed) {
     tray?.destroy();
     tray = null;
@@ -4777,9 +5008,13 @@ function syncTray() {
     tray = new import_electron5.Tray(
       import_electron5.nativeImage.createFromPath(iconPath),
     );
-    tray.setToolTip("AI Account Manager — automation monitoring");
     tray.on("double-click", showMainWindow);
   }
+  tray.setToolTip(
+    reasons.automation
+      ? "AI Account Manager — automation monitoring"
+      : "AI Account Manager — syncing usage to your phone",
+  );
   const paused = Boolean(
     automation.pausedUntil && automation.pausedUntil > Date.now(),
   );
@@ -4787,17 +5022,23 @@ function syncTray() {
     import_electron5.Menu.buildFromTemplate([
       { label: "Open AI Account Manager", click: showMainWindow },
       { type: "separator" },
-      paused
-        ? {
-            label: "Resume unattended permissions",
-            click: () =>
-              void backend?.updateAutomationSettings({ pausedUntil: null }),
-          }
-        : {
-            label: "Emergency pause",
-            click: () => void backend?.emergencyPause(),
-          },
-      { type: "separator" },
+      ...(reasons.automation
+        ? [
+            paused
+              ? {
+                  label: "Resume unattended permissions",
+                  click: () =>
+                    void backend?.updateAutomationSettings({
+                      pausedUntil: null,
+                    }),
+                }
+              : {
+                  label: "Emergency pause",
+                  click: () => void backend?.emergencyPause(),
+                },
+            { type: "separator" },
+          ]
+        : []),
       {
         label: "Quit",
         click: () => {
@@ -4819,12 +5060,7 @@ void import_electron5.app.whenReady().then(async () => {
 });
 import_electron5.app.on("window-all-closed", () => {
   stopAll();
-  const automation = loadSettings().automation;
-  if (
-    isQuitting ||
-    !automation.automationEnabled ||
-    !automation.runInBackground
-  ) {
+  if (isQuitting || !keepsRunningInBackground()) {
     import_electron5.app.quit();
   }
 });

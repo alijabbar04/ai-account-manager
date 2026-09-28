@@ -155,7 +155,12 @@ async function run() {
   smoke.layoutStatsAfter = layoutStatsAfter;
   if (smoke.overflow) errors.push("horizontal overflow detected");
   if (view === "settings") {
-    for (const value of ["Profile visibility", "Visible in profile views"]) {
+    for (const value of [
+      "Profile visibility",
+      "Visible in profile views",
+      "Phone companion",
+      "Share usage with my phone",
+    ]) {
       if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
     }
   } else if (view.startsWith("dashboard")) {
@@ -280,6 +285,11 @@ async function run() {
   }
   if (errors.length) {
     throw new Error(`Visual smoke failed: ${errors.join("; ")}`);
+  }
+  if (process.env.SMOKE_SCROLL === "bottom") {
+    await win.webContents.executeJavaScript(
+      `document.querySelector(".main-scroll").scrollTop = 1e6`,
+    );
   }
   await win.webContents.executeJavaScript(
     "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",

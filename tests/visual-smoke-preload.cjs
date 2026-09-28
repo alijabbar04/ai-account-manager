@@ -131,6 +131,36 @@ const gptUsage = {
   },
 };
 
+// SMOKE_PHONE=pairing shows Settings with phone sync on and a code on screen.
+const qrPlaceholder = `data:image/svg+xml;base64,${btoa(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/><path d="M1 1h3v3H1zM6 1h3v3H6zM1 6h3v3H1zM6 6h1v1H6zM8 8h1v1H8z" fill="#000"/></svg>',
+)}`;
+let phoneView =
+  process.env.SMOKE_PHONE === "pairing"
+    ? {
+        enabled: true,
+        keepRunning: true,
+        port: 47821,
+        status: { state: "listening", host: "100.101.102.103", port: 47821 },
+        device: null,
+        pairing: {
+          code: "K7QX-M2PA",
+          link: "aamusage://pair?host=100.101.102.103&port=47821&code=K7QXM2PA",
+          qrDataUrl: qrPlaceholder,
+          expiresAt: now + 9.5 * 60 * 1_000,
+        },
+        encryptionAvailable: true,
+      }
+    : {
+        enabled: false,
+        keepRunning: true,
+        port: 47821,
+        status: { state: "off" },
+        device: null,
+        pairing: null,
+        encryptionAvailable: true,
+      };
+
 let otherAccountsLayout =
   process.env.SMOKE_SAVED_LAYOUT === "wide" ? "wide" : "grid";
 let listStatesCalls = 0;
@@ -167,6 +197,14 @@ contextBridge.exposeInMainWorld("cam", {
       otherAccountsLayout = layout;
       return { ok: true, layout };
     },
+  },
+  phone: {
+    get: async () => phoneView,
+    set: async (patch) => (phoneView = { ...phoneView, ...patch }),
+    pair: async () => ({ ok: true, view: phoneView }),
+    cancelPairing: async () => (phoneView = { ...phoneView, pairing: null }),
+    unpair: async () => (phoneView = { ...phoneView, device: null }),
+    onChanged: noopSubscription,
   },
   __visualSmoke: {
     stats: async () => ({ listStatesCalls, layoutSetCalls }),
