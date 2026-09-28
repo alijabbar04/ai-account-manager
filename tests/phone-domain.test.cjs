@@ -234,7 +234,11 @@ test("device tokens compare in constant time and reject mismatches", () => {
 
 test("pairing links and settings are normalized defensively", () => {
   assert.equal(
-    buildPairingLink({ host: "100.101.102.103", port: 47821, code: "K7QXM2PA" }),
+    buildPairingLink({
+      host: "100.101.102.103",
+      port: 47821,
+      code: "K7QXM2PA",
+    }),
     "aamusage://pair?host=100.101.102.103&port=47821&code=K7QXM2PA",
   );
   assert.deepEqual(normalizePhoneSettings(undefined), {
