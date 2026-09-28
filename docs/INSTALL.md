@@ -102,10 +102,10 @@ Click **Open in VS Code** on a card. A VS Code window opens with that account's
 environment already set. Several accounts can be open at once — each window
 keeps its own account for as long as it lives. There is no "switching".
 
-The dashboard also has **Start something new**: **New Claude Cowork**, **New
-Codex chat** and **New VS Code Codex** open the installed apps directly. Those
-use whichever account is active in Claude Desktop or ChatGPT — they are not
-per-profile.
+The GPT / Codex card has **Open in Codex App**, which opens the Codex app on a
+new chat, and **Open in VS Code**, which opens a new VS Code window for the
+Codex extension. Both use whichever ChatGPT account is signed in to Codex — they
+are not per-profile.
 
 > **VS Code catch:** if VS Code is already running, Windows hands the new window
 > to the existing process, which keeps _its_ environment rather than the one the

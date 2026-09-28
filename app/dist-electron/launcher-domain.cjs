@@ -19,6 +19,63 @@ const ALLOWED_EXTERNAL_TARGETS = new Set([
 ]);
 
 const OTHER_ACCOUNTS_LAYOUTS = new Set(["grid", "wide"]);
+const CLAUDE_PROFILE_AUTH_OVERRIDES = new Set([
+  "ANTHROPIC_API_KEY",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+]);
+
+function buildClaudeProfileEnvironment(source, configDir, isHomeDefault) {
+  const env = {};
+  for (const [name, value] of Object.entries(source ?? {})) {
+    if (
+      name.startsWith("ELECTRON_") ||
+      name === "NODE_OPTIONS" ||
+      name === "CLAUDE_CONFIG_DIR" ||
+      CLAUDE_PROFILE_AUTH_OVERRIDES.has(name)
+    ) {
+      continue;
+    }
+    env[name] = value;
+  }
+  if (!isHomeDefault) env.CLAUDE_CONFIG_DIR = configDir;
+  return env;
+}
+
+// Scrub first, then apply overrides. The VS Code CLI is Code.exe running
+// cli.js with ELECTRON_RUN_AS_NODE=1; when the scrub ran after the overrides it
+// deleted that flag, so every "headless" CLI call (extension install/list)
+// started the full VS Code UI and opened a second window beside the real one.
+function buildChildProcessEnvironment(source, overrides = {}) {
+  const env = { ...(source ?? {}) };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.NODE_OPTIONS;
+  return { ...env, ...overrides };
+}
+
+function mergeClaudeVSCodeSettings(settings, configDir) {
+  const current = settings && typeof settings === "object" ? settings : {};
+  const variables = Array.isArray(current["claudeCode.environmentVariables"])
+    ? current["claudeCode.environmentVariables"].filter(
+        (item) =>
+          item?.name !== "CLAUDE_CONFIG_DIR" &&
+          !CLAUDE_PROFILE_AUTH_OVERRIDES.has(item?.name),
+      )
+    : [];
+  variables.push({ name: "CLAUDE_CONFIG_DIR", value: configDir });
+  for (const name of CLAUDE_PROFILE_AUTH_OVERRIDES) {
+    variables.push({ name, value: "" });
+  }
+  return {
+    ...current,
+    "claudeCode.environmentVariables": variables,
+    "terminal.integrated.env.windows": {
+      ...(current["terminal.integrated.env.windows"] ?? {}),
+      CLAUDE_CONFIG_DIR: configDir,
+      ANTHROPIC_API_KEY: null,
+      CLAUDE_CODE_OAUTH_TOKEN: null,
+    },
+  };
+}
 
 function validateExternalTarget(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 2048) {
@@ -209,8 +266,11 @@ module.exports = {
   CODEX_NEW_CHAT_URL,
   OTHER_ACCOUNTS_LAYOUTS,
   VSCODE_CODEX_PANEL_URL,
+  buildChildProcessEnvironment,
+  buildClaudeProfileEnvironment,
   buildVsCodeWindowArgs,
   extensionStateFromStorage,
+  mergeClaudeVSCodeSettings,
   normalizeHiddenProfileIds,
   normalizeOtherAccountsLayout,
   parseExtensionList,

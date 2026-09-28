@@ -1414,15 +1414,6 @@ code {
   color: color-mix(in srgb, var(--status-warn) 64%, var(--ink));
   font-size: 11.5px;
 }
-.gpt-card-foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 10.5px;
-  border-top: 1px solid var(--hairline);
-  padding-top: 10px;
-}
 @media (max-width: 720px) {
   .gpt-card-head {
     align-items: flex-start;
@@ -1431,41 +1422,8 @@ code {
   .gpt-refresh {
     margin-left: 50px;
   }
-  .gpt-card-foot {
-    flex-direction: column;
-    gap: 3px;
-  }
 }
 
-.global-launchers {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
-  margin-bottom: 20px;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-}
-.global-launchers-copy {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.global-launchers-copy strong {
-  color: var(--ink);
-  font-size: 13px;
-  flex: none;
-}
-.global-launcher-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 .launcher-result {
   display: flex;
   align-items: center;
@@ -1553,13 +1511,6 @@ code {
   width: 34px;
   height: 18px;
   accent-color: var(--accent);
-}
-@media (max-width: 920px) {
-  .global-launchers-copy {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 3px;
-  }
 }
 @media (max-width: 620px) {
   .grid {
@@ -2614,5 +2565,140 @@ kbd {
   }
   .session-profile-dialog {
     width: 100%;
+  }
+}
+
+/* v1.8 dashboard: provider glows, plan badges, GPT launchers */
+.claude-dashboard-grid > .card {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 8%, transparent),
+      transparent 46%
+    ),
+    var(--surface);
+}
+.plan-badge {
+  color: #b4532f;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 650;
+  flex: none;
+  white-space: nowrap;
+}
+:root[data-theme="dark"] .plan-badge {
+  color: #f2a98c;
+}
+.gpt-usage-card .btn-primary {
+  background: #10a37f;
+}
+.gpt-usage-card .btn-primary:hover:not(:disabled) {
+  background: #0e8f70;
+}
+.gpt-card-actions {
+  align-items: center;
+}
+.gpt-updated {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+/* Collapsible primary sidebar */
+.app-shell {
+  transition: grid-template-columns 0.18s ease;
+}
+.app-shell[data-nav-collapsed] {
+  grid-template-columns: 64px 1fr;
+}
+.sidebar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-brand:has(.sidebar-toggle) {
+  gap: 8px;
+  padding-right: 0;
+}
+.sidebar-toggle {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  padding: 4px;
+  color: var(--ink-2);
+  border: 0;
+  background: transparent;
+}
+.sidebar-toggle:hover:not(:disabled) {
+  color: var(--ink);
+}
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.sidebar[data-collapsed] {
+  padding: 16px 8px;
+  overflow-x: hidden;
+}
+.sidebar[data-collapsed] .sidebar-brand {
+  justify-content: center;
+  padding: 0 0 10px;
+}
+.sidebar[data-collapsed] .brand-mark,
+.sidebar[data-collapsed] .sidebar-title {
+  display: none;
+}
+.sidebar[data-collapsed] .sidebar-toggle {
+  margin-left: 0;
+}
+.sidebar[data-collapsed] .sidebar-section {
+  margin-bottom: 4px;
+}
+.sidebar[data-collapsed] .sidebar-heading {
+  height: 1px;
+  margin: 6px 8px;
+  padding: 0;
+  overflow: hidden;
+  color: transparent;
+  background: var(--hairline);
+}
+.sidebar[data-collapsed] .nav-item {
+  position: relative;
+  justify-content: center;
+  padding: 9px 0;
+}
+.sidebar[data-collapsed] .nav-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.sidebar[data-collapsed] .nav-badge {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 9.5px;
+  line-height: 14px;
+}
+.sidebar[data-collapsed] .nav-status-dot {
+  position: absolute;
+  bottom: 5px;
+  right: 9px;
+}
+.sidebar[data-collapsed] .sidebar-foot {
+  justify-content: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell {
+    transition: none;
   }
 }

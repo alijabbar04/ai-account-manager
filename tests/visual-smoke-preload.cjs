@@ -20,7 +20,11 @@ const states = noProfiles
           name: "Work Example",
           configDir: "C:\\Smoke Test\\Work & Research",
         },
-        identity: { loggedIn: true, email: "work@example.test" },
+        identity: {
+          loggedIn: true,
+          email: "work@example.test",
+          planLabel: "Team Premium",
+        },
         usage: {
           ok: true,
           fetchedAt: now,
@@ -50,7 +54,11 @@ const states = noProfiles
           name: "Personal Example",
           configDir: "C:\\Smoke Test\\Personal's Profile",
         },
-        identity: { loggedIn: true, email: "personal@example.test" },
+        identity: {
+          loggedIn: true,
+          email: "personal@example.test",
+          planLabel: "Max 20x",
+        },
         usage: {
           ok: true,
           fetchedAt: now,
@@ -80,6 +88,7 @@ for (let index = 0; !noProfiles && index < otherCount; index += 1) {
     identity: {
       loggedIn: true,
       email: `additional-${index + 1}@example.test`,
+      planLabel: "Pro",
     },
     usage: {
       ok: true,

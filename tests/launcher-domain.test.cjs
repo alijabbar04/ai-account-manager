@@ -4,8 +4,11 @@ const {
   CLAUDE_COWORK_URL,
   CODEX_NEW_CHAT_URL,
   VSCODE_CODEX_PANEL_URL,
+  buildChildProcessEnvironment,
+  buildClaudeProfileEnvironment,
   buildVsCodeWindowArgs,
   extensionStateFromStorage,
+  mergeClaudeVSCodeSettings,
   normalizeHiddenProfileIds,
   normalizeOtherAccountsLayout,
   parseExtensionList,
@@ -15,6 +18,63 @@ const {
   validateExternalTarget,
   validateProjectDirectory,
 } = require("../app/dist-electron/launcher-domain.cjs");
+
+test("the VS Code CLI keeps ELECTRON_RUN_AS_NODE so it cannot open a window", () => {
+  const source = {
+    PATH: "C:\\Tools",
+    ELECTRON_RUN_AS_NODE: "1",
+    NODE_OPTIONS: "--inspect",
+  };
+  // Inherited copies are scrubbed; an explicit override is what the CLI needs.
+  assert.deepEqual(buildChildProcessEnvironment(source), { PATH: "C:\\Tools" });
+  assert.deepEqual(
+    buildChildProcessEnvironment(source, { ELECTRON_RUN_AS_NODE: "1" }),
+    { PATH: "C:\\Tools", ELECTRON_RUN_AS_NODE: "1" },
+  );
+  assert.equal(source.ELECTRON_RUN_AS_NODE, "1", "the source is not mutated");
+});
+
+test("Claude profile launches cannot inherit a machine-wide API key", () => {
+  const env = buildClaudeProfileEnvironment(
+    {
+      PATH: "C:\\Tools",
+      CLAUDE_CONFIG_DIR: "C:\\personal",
+      ANTHROPIC_API_KEY: "secret-key",
+      CLAUDE_CODE_OAUTH_TOKEN: "secret-token",
+      ELECTRON_RUN_AS_NODE: "1",
+    },
+    "C:\\work",
+    false,
+  );
+  assert.deepEqual(env, { PATH: "C:\\Tools", CLAUDE_CONFIG_DIR: "C:\\work" });
+});
+
+test("VS Code Claude settings override inherited authentication variables", () => {
+  const settings = mergeClaudeVSCodeSettings(
+    {
+      "claudeCode.environmentVariables": [
+        { name: "ANTHROPIC_API_KEY", value: "secret-key" },
+        { name: "CUSTOM", value: "keep" },
+      ],
+      "terminal.integrated.env.windows": { CUSTOM: "keep" },
+    },
+    "C:\\work",
+  );
+  assert.deepEqual(settings["claudeCode.environmentVariables"], [
+    { name: "CUSTOM", value: "keep" },
+    { name: "CLAUDE_CONFIG_DIR", value: "C:\\work" },
+    { name: "ANTHROPIC_API_KEY", value: "" },
+    { name: "CLAUDE_CODE_OAUTH_TOKEN", value: "" },
+  ]);
+  assert.equal(
+    settings["terminal.integrated.env.windows"].ANTHROPIC_API_KEY,
+    null,
+  );
+  assert.equal(
+    settings["terminal.integrated.env.windows"].CLAUDE_CONFIG_DIR,
+    "C:\\work",
+  );
+});
 
 test("official app protocol targets are exact allowlist entries", () => {
   assert.equal(validateExternalTarget(CLAUDE_COWORK_URL), CLAUDE_COWORK_URL);

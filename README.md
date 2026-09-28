@@ -71,13 +71,23 @@ public.
 5. **Add another:** *+ Add account → Create new* → a terminal opens running
    `claude auth login` → sign in in the browser. The card turns green by itself.
 6. **Work:** **Open in VS Code** on an account card starts a session as that
-   account, and the dashboard launchers — **New Claude Cowork**, **New Codex
-   chat**, **New VS Code Codex** — open the installed apps. Accounts run side by
-   side.
+   account. The GPT / Codex card has **Open in Codex App** and **Open in VS
+   Code** for the ChatGPT account signed in to Codex. Accounts run side by side.
 
 Full walkthrough: [docs/INSTALL.md](docs/INSTALL.md).
 
 ---
+
+## What's in 1.8.0
+
+- **Plan badges** on every account card — Max 5x, Max 20x, Pro, Team Premium
+  and so on for Claude, the ChatGPT plan for GPT / Codex.
+- **Codex launchers on the GPT card**: **Open in Codex App** and **Open in VS
+  Code** replace the separate *Start something new* strip.
+- **Collapsible sidebar**: the toggle beside the product name shrinks the left
+  pane to an icon rail, and the choice is remembered.
+- **Open in VS Code opens one window.** The VS Code CLI calls made before each
+  launch were starting a second, full VS Code window.
 
 ## What's in 1.7.0
 
