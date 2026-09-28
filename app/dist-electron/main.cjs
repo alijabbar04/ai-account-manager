@@ -50,6 +50,7 @@ var {
   CODEX_COMMAND_HELP_URL,
   CODEX_NEW_CHAT_URL,
   VSCODE_CODEX_PANEL_URL,
+  buildChildProcessEnvironment,
   buildClaudeProfileEnvironment,
   buildVsCodeWindowArgs,
   extensionStateFromStorage,
@@ -73,6 +74,7 @@ var {
   OAuthIdentityVerifier,
   mergeVerifiedIdentity,
 } = require("./oauth-identity.cjs");
+var { describeClaudePlan } = require("./plan-domain.cjs");
 
 function sanitizeReviewedDiagnosticReport(input) {
   if (!input || typeof input !== "object" || !Array.isArray(input.elements)) {
@@ -475,10 +477,7 @@ function vsCodeExecutable() {
   return candidates.find(fileExists) ?? null;
 }
 function cleanElectronEnv(overrides = {}) {
-  const env = { ...process.env, ...overrides };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.NODE_OPTIONS;
-  return env;
+  return buildChildProcessEnvironment(process.env, overrides);
 }
 function vsCodeCliScript(executable) {
   const direct = path4.join(
@@ -4334,6 +4333,7 @@ var Backend = class {
             )
           : null;
         const identity = mergeVerifiedIdentity(localIdentity, verifiedIdentity);
+        identity.planLabel = describeClaudePlan(identity);
         const activity = readActivity(profile.configDir);
         let usage = this.usage.getCached(profile.id);
         if (usage && !usage.ok && identity.loggedIn) {

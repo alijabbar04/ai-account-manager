@@ -7,9 +7,34 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
-## [1.7.2] — unreleased
+## [1.8.0] — unreleased
+
+### Added
+
+- Every account card shows its plan: Max 5x, Max 20x, Pro, Team Premium, Team
+  Standard or Enterprise for Claude, taken from the subscription stored with
+  each OAuth token, and the ChatGPT plan for GPT / Codex.
+- The GPT / Codex card has **Open in Codex App** and **Open in VS Code**.
+- The sidebar collapses to an icon rail with the toggle beside the product name.
+  The choice persists across restarts.
+
+### Changed
+
+- The dashboard's Claude cards carry an orange tint to match the green GPT card.
+- Removed the *Start something new* launcher strip and the "ChatGPT plan usage
+  via the local Codex service" footer line. The Codex launchers now live on the
+  GPT card.
+- **Open in VS Code** shows *Opening…* while VS Code starts, instead of looking
+  unresponsive for a few seconds.
 
 ### Fixed
+
+- **Open in VS Code opened two windows.** `cleanElectronEnv()` applied its
+  overrides before scrubbing the inherited environment, so it deleted the
+  `ELECTRON_RUN_AS_NODE=1` that the VS Code CLI needs. Every "headless" CLI call
+  (installing the Claude Code extension, listing Codex extensions) started the
+  full VS Code UI and opened a window next to the real one. The same bug
+  affected the VS Code Codex launcher.
 
 - Claude account cards now verify the account owning each OAuth token. A stale
   `.claude.json` can no longer show a personal email over work-account usage.

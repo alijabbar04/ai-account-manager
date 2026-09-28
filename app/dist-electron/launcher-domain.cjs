@@ -41,6 +41,17 @@ function buildClaudeProfileEnvironment(source, configDir, isHomeDefault) {
   return env;
 }
 
+// Scrub first, then apply overrides. The VS Code CLI is Code.exe running
+// cli.js with ELECTRON_RUN_AS_NODE=1; when the scrub ran after the overrides it
+// deleted that flag, so every "headless" CLI call (extension install/list)
+// started the full VS Code UI and opened a second window beside the real one.
+function buildChildProcessEnvironment(source, overrides = {}) {
+  const env = { ...(source ?? {}) };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.NODE_OPTIONS;
+  return { ...env, ...overrides };
+}
+
 function mergeClaudeVSCodeSettings(settings, configDir) {
   const current = settings && typeof settings === "object" ? settings : {};
   const variables = Array.isArray(current["claudeCode.environmentVariables"])
@@ -255,6 +266,7 @@ module.exports = {
   CODEX_NEW_CHAT_URL,
   OTHER_ACCOUNTS_LAYOUTS,
   VSCODE_CODEX_PANEL_URL,
+  buildChildProcessEnvironment,
   buildClaudeProfileEnvironment,
   buildVsCodeWindowArgs,
   extensionStateFromStorage,

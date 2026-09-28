@@ -4,6 +4,7 @@ const {
   CLAUDE_COWORK_URL,
   CODEX_NEW_CHAT_URL,
   VSCODE_CODEX_PANEL_URL,
+  buildChildProcessEnvironment,
   buildClaudeProfileEnvironment,
   buildVsCodeWindowArgs,
   extensionStateFromStorage,
@@ -17,6 +18,21 @@ const {
   validateExternalTarget,
   validateProjectDirectory,
 } = require("../app/dist-electron/launcher-domain.cjs");
+
+test("the VS Code CLI keeps ELECTRON_RUN_AS_NODE so it cannot open a window", () => {
+  const source = {
+    PATH: "C:\\Tools",
+    ELECTRON_RUN_AS_NODE: "1",
+    NODE_OPTIONS: "--inspect",
+  };
+  // Inherited copies are scrubbed; an explicit override is what the CLI needs.
+  assert.deepEqual(buildChildProcessEnvironment(source), { PATH: "C:\\Tools" });
+  assert.deepEqual(
+    buildChildProcessEnvironment(source, { ELECTRON_RUN_AS_NODE: "1" }),
+    { PATH: "C:\\Tools", ELECTRON_RUN_AS_NODE: "1" },
+  );
+  assert.equal(source.ELECTRON_RUN_AS_NODE, "1", "the source is not mutated");
+});
 
 test("Claude profile launches cannot inherit a machine-wide API key", () => {
   const env = buildClaudeProfileEnvironment(

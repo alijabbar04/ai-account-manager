@@ -143,9 +143,9 @@ for (const feature of [
   "Session launcher",
   "Redacted activity history",
   "Provider capability matrix",
-  "New Claude Cowork",
-  "New Codex chat",
-  "New VS Code Codex",
+  "Open in Codex App",
+  "Collapse sidebar",
+  "Expand sidebar",
   "Profile visibility",
   "Manage profile visibility",
   "Full width",
@@ -167,6 +167,8 @@ for (const removed of [
   "Peak day",
   "Current streak",
   "Usage resets",
+  "Start something new",
+  "ChatGPT plan usage via the local Codex service",
 ]) {
   assert.ok(
     !renderer.includes(removed),
@@ -182,9 +184,33 @@ const dashboardEnd = renderer.indexOf("function Ku(", dashboardStart);
 const dashboardRenderer = renderer.slice(dashboardStart, dashboardEnd);
 assert.ok(
   dashboardStart >= 0 &&
-    dashboardRenderer.indexOf("i.jsx(GptUsageCard") <
-      dashboardRenderer.indexOf("i.jsx(GlobalLaunchers"),
-  "Global launchers must render after GPT / Codex usage",
+    dashboardRenderer.includes("i.jsx(GptUsageCard") &&
+    !renderer.includes("GlobalLaunchers"),
+  "The GPT card owns the Codex launchers; the separate launcher strip must stay removed",
+);
+const gptCardStart = renderer.indexOf("function GptUsageCard(");
+const gptCard = renderer.slice(
+  gptCardStart,
+  renderer.indexOf("\nfunction ", gptCardStart + 1),
+);
+assert.ok(
+  gptCard.includes("window.cam.launchers.codexChat()") &&
+    gptCard.includes("window.cam.launchers.vscodeCodex()"),
+  "The GPT card must launch the Codex app and VS Code Codex",
+);
+assert.ok(
+  renderer.includes("_.planLabel") &&
+    main.includes("identity.planLabel = describeClaudePlan(identity)"),
+  "Claude account cards must show the plan derived in the main process",
+);
+assert.ok(
+  main.includes(
+    "return buildChildProcessEnvironment(process.env, overrides);",
+  ) &&
+    !/delete env\.ELECTRON_RUN_AS_NODE;\s*delete env\.NODE_OPTIONS;\s*return env;/.test(
+      main,
+    ),
+  "cleanElectronEnv must apply overrides after scrubbing, or the VS Code CLI opens a window",
 );
 assert.ok(
   main.includes("otherAccountsLayout: normalizeOtherAccountsLayout") &&

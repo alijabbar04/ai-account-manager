@@ -12593,6 +12593,25 @@ function Ov() {
 var Uv = Ov();
 const Rv = { system: "◐", light: "☀", dark: "☾" },
   Yo = { system: "System theme", light: "Light theme", dark: "Dark theme" };
+const SIDEBAR_COLLAPSED_KEY = "aam.sidebar.collapsed";
+function SidebarToggleIcon({ collapsed: f }) {
+  return i.jsxs("svg", {
+    viewBox: "0 0 24 24",
+    width: 16,
+    height: 16,
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+    children: [
+      i.jsx("rect", { x: 3, y: 4, width: 18, height: 16, rx: 2.5 }),
+      i.jsx("path", { d: "M9 4v16" }),
+      i.jsx("path", { d: f ? "M13.5 10l2 2-2 2" : "M15.5 10l-2 2 2 2" }),
+    ],
+  });
+}
 function Hv({
   view: f,
   onNavigate: o,
@@ -12601,6 +12620,8 @@ function Hv({
   accountCount: x,
   themePref: E,
   onCycleTheme: D,
+  collapsed: collapsed = !1,
+  onToggleCollapsed: onToggleCollapsed,
 }) {
   const w = (g) => (d ?? []).filter((B) => B.record.provider === g).length,
     C = (g) => {
@@ -12613,6 +12634,8 @@ function Hv({
     };
   return i.jsxs("nav", {
     className: "sidebar",
+    id: "primary-sidebar",
+    "data-collapsed": collapsed || void 0,
     "aria-label": "Primary",
     children: [
       i.jsxs("div", {
@@ -12631,6 +12654,15 @@ function Hv({
             className: "sidebar-title",
             children: "AI Account Manager",
           }),
+          i.jsx("button", {
+            className: "btn btn-icon sidebar-toggle",
+            onClick: onToggleCollapsed,
+            title: collapsed ? "Expand sidebar" : "Collapse sidebar",
+            "aria-label": collapsed ? "Expand sidebar" : "Collapse sidebar",
+            "aria-expanded": !collapsed,
+            "aria-controls": "primary-sidebar",
+            children: i.jsx(SidebarToggleIcon, { collapsed }),
+          }),
         ],
       }),
       i.jsxs("div", {
@@ -12641,12 +12673,14 @@ function Hv({
             children: "Claude Code",
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "dashboard",
             onClick: () => o("dashboard"),
             icon: "⌂",
             label: "Dashboard",
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "accounts",
             onClick: () => o("accounts"),
             icon: "◍",
@@ -12654,12 +12688,14 @@ function Hv({
             badge: x ?? void 0,
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "skills-sync",
             onClick: () => o("skills-sync"),
             icon: "⇄",
             label: "Skills Sync",
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "settings",
             onClick: () => o("settings"),
             icon: "⚙",
@@ -12675,6 +12711,7 @@ function Hv({
             children: "Automation",
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "automation-sessions",
             onClick: () => o("automation-sessions"),
             icon: "⚡",
@@ -12690,12 +12727,14 @@ function Hv({
             children: "API Analytics",
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "api-dashboard",
             onClick: () => o("api-dashboard"),
             icon: "▦",
             label: "Dashboard",
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "api-keys",
             onClick: () => o("api-keys"),
             icon: "🔑",
@@ -12703,6 +12742,7 @@ function Hv({
             badge: d?.length ?? void 0,
           }),
           i.jsx(Zt, {
+            collapsed,
             active: f === "analytics",
             onClick: () => o("analytics"),
             icon: "📈",
@@ -12718,6 +12758,7 @@ function Hv({
             i.jsx(
               Zt,
               {
+                collapsed,
                 active: f === `provider:${g.id}`,
                 onClick: () => o(`provider:${g.id}`),
                 dot: g.accent,
@@ -12751,10 +12792,12 @@ function Zt({
   label: x,
   badge: E,
   status: D,
+  collapsed: collapsed = !1,
 }) {
   return i.jsxs("button", {
     className: "nav-item",
     "data-active": f || void 0,
+    title: collapsed ? x : void 0,
     onClick: o,
     children: [
       d
@@ -13319,9 +13362,6 @@ function Ko(f) {
           : String(f)
     : "0";
 }
-function Lv(f) {
-  return f ? f.charAt(0).toUpperCase() + f.slice(1) : "";
-}
 function wl(f, o = {}) {
   if (f == null || !Number.isFinite(f)) return "—";
   const v = Math.abs(f),
@@ -13432,10 +13472,6 @@ function Qv({ limit: f, now: o }) {
     ],
   });
 }
-function Zv(f, o) {
-  const v = o?.match(/max_(\d+)x/i);
-  return v ? `Max ${v[1]}x` : Lv(f);
-}
 function ProfileVisibilityIcon({ hidden: f = !1 }) {
   return f
     ? i.jsxs("svg", {
@@ -13484,110 +13520,6 @@ function VisibilityUndo({ item: f, onUndo: o }) {
     })
   );
 }
-function GlobalLaunchers() {
-  const [f, o] = q.useState(null),
-    [v, d] = q.useState(null),
-    x = async (E, D, w) => {
-      (d(E), o(null));
-      try {
-        const C = await D();
-        if (C.cancelled) return;
-        o(
-          C.ok
-            ? { ok: !0, message: C.message ?? w }
-            : {
-                ok: !1,
-                message:
-                  C.error ?? "The launcher could not complete the request.",
-                helpTarget: C.helpTarget,
-              },
-        );
-      } finally {
-        d(null);
-      }
-    };
-  return i.jsxs("section", {
-    className: "global-launchers",
-    "aria-label": "New chat launchers",
-    children: [
-      i.jsxs("div", {
-        className: "global-launchers-copy",
-        children: [
-          i.jsx("strong", { children: "Start something new" }),
-          i.jsx("span", {
-            children:
-              "Claude Cowork uses the account currently active in Claude Desktop. Codex app chats use the account active in Codex; managed Claude Code profiles cannot be applied to either app.",
-          }),
-        ],
-      }),
-      i.jsxs("div", {
-        className: "global-launcher-actions",
-        children: [
-          i.jsx("button", {
-            className: "btn btn-primary",
-            disabled: v !== null,
-            title: "Uses the account currently active in Claude Desktop",
-            onClick: () =>
-              x(
-                "cowork",
-                () => window.cam.launchers.claudeCowork(),
-                "Claude Cowork opened.",
-              ),
-            children: v === "cowork" ? "Opening…" : "New Claude Cowork",
-          }),
-          i.jsx("button", {
-            className: "btn",
-            disabled: v !== null,
-            onClick: () =>
-              x(
-                "codex",
-                () => window.cam.launchers.codexChat(),
-                "New Codex chat opened.",
-              ),
-            children: v === "codex" ? "Opening…" : "New Codex chat",
-          }),
-          i.jsx("button", {
-            className: "btn",
-            disabled: v !== null,
-            onClick: () =>
-              x(
-                "vscode",
-                () => window.cam.launchers.vscodeCodex(),
-                "VS Code opened.",
-              ),
-            children: v === "vscode" ? "Opening…" : "New VS Code Codex",
-          }),
-          i.jsx("button", {
-            className: "btn",
-            disabled: v !== null,
-            onClick: () =>
-              x(
-                "project",
-                () => window.cam.launchers.vscodeProject(),
-                "Project opened in a new VS Code window.",
-              ),
-            children: v === "project" ? "Choosing…" : "VS Code project…",
-          }),
-        ],
-      }),
-      f &&
-        i.jsxs("div", {
-          className: "banner launcher-result",
-          "data-kind": f.ok ? "ok" : "warn",
-          children: [
-            i.jsx("span", { children: f.message }),
-            !f.ok &&
-              f.helpTarget &&
-              i.jsx("button", {
-                className: "btn btn-small",
-                onClick: () => window.cam.launchers.openHelp(f.helpTarget),
-                children: "Install / help ↗",
-              }),
-          ],
-        }),
-    ],
-  });
-}
 function Jo({
   state: f,
   now: o,
@@ -13601,9 +13533,20 @@ function Jo({
   dashboardRole: dashboardRole,
 }) {
   const [C, g] = q.useState(!1),
+    [launching, setLaunching] = q.useState(!1),
     B = q.useRef(null),
     { profile: R, identity: _, usage: Y, activity: U, isDefault: H } = f,
-    N = Gv(f);
+    N = Gv(f),
+    // VS Code can take a few seconds to show its window; hold the button so a
+    // second click does not look like the only way to get one.
+    launchVSCode = () => {
+      if (launching) return;
+      setLaunching(!0);
+      Promise.all([
+        Promise.resolve(v("vscode")),
+        new Promise((resolve) => window.setTimeout(resolve, 2500)),
+      ]).finally(() => setLaunching(!1));
+    };
   q.useEffect(() => {
     if (!C) return;
     const k = (al) => {
@@ -13639,6 +13582,13 @@ function Jo({
             title: R.configDir,
             children: R.name,
           }),
+          _.planLabel &&
+            i.jsx("span", {
+              className: "plan-badge",
+              "data-provider": "claude",
+              title: "Claude plan for this account",
+              children: _.planLabel,
+            }),
           H &&
             i.jsx("span", {
               className: "badge badge-default",
@@ -13779,10 +13729,11 @@ function Jo({
                 children: [
                   i.jsx("button", {
                     className: "btn btn-primary",
-                    onClick: () => v("vscode"),
+                    onClick: launchVSCode,
+                    disabled: launching,
                     title:
                       "Open a folderless VS Code window for this Claude Code profile",
-                    children: "Open in VS Code",
+                    children: launching ? "Opening…" : "Open in VS Code",
                   }),
                   i.jsx("button", {
                     className: "btn",
@@ -13814,8 +13765,9 @@ function Jo({
                   }),
                   i.jsx("button", {
                     className: "btn",
-                    onClick: () => v("vscode"),
-                    children: "Open in VS Code",
+                    onClick: launchVSCode,
+                    disabled: launching,
+                    children: launching ? "Opening…" : "Open in VS Code",
                   }),
                 ],
               }),
@@ -14216,7 +14168,36 @@ function GptUsageMeter({ window: f, now: o }) {
 }
 function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
   const x = collectGptWindows(f),
-    D = f?.account;
+    D = f?.account,
+    [launching, setLaunching] = q.useState(null),
+    [launchResult, setLaunchResult] = q.useState(null),
+    launch = async (kind, open) => {
+      if (launching) return;
+      (setLaunching(kind), setLaunchResult(null));
+      try {
+        const [result] = await Promise.all([
+          open(),
+          new Promise((resolve) => window.setTimeout(resolve, 1500)),
+        ]);
+        if (result.cancelled) return;
+        result.ok
+          ? result.message &&
+            setLaunchResult({ ok: !0, message: result.message })
+          : setLaunchResult({
+              ok: !1,
+              message:
+                result.error ?? "The launcher could not complete the request.",
+              helpTarget: result.helpTarget,
+            });
+      } finally {
+        setLaunching(null);
+      }
+    };
+  q.useEffect(() => {
+    if (!launchResult?.ok) return;
+    const timer = window.setTimeout(() => setLaunchResult(null), 9e3);
+    return () => window.clearTimeout(timer);
+  }, [launchResult]);
   return i.jsxs("section", {
     className: "card gpt-usage-card",
     "aria-label": "GPT and Codex account usage",
@@ -14291,22 +14272,54 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
                     className: "gpt-warning",
                     children: f.warning,
                   }),
-                i.jsxs("div", {
-                  className: "gpt-card-foot",
-                  children: [
-                    i.jsx("span", {
-                      children:
-                        "ChatGPT plan usage via the local Codex service",
-                    }),
-                    i.jsx("span", {
-                      children: f.fetchedAt
-                        ? `updated ${Tn(f.fetchedAt, o)}`
-                        : "",
-                    }),
-                  ],
-                }),
               ],
             }),
+      i.jsxs("footer", {
+        className: "card-actions gpt-card-actions",
+        children: [
+          i.jsx("button", {
+            className: "btn btn-primary",
+            disabled: launching !== null,
+            title:
+              "Open the Codex app on a new chat. Codex uses the ChatGPT account signed in there.",
+            onClick: () =>
+              launch("codex", () => window.cam.launchers.codexChat()),
+            children: launching === "codex" ? "Opening…" : "Open in Codex App",
+          }),
+          i.jsx("button", {
+            className: "btn",
+            disabled: launching !== null,
+            title:
+              "Open a new VS Code window with the Codex extension, signed in with your ChatGPT account",
+            onClick: () =>
+              launch("vscode", () => window.cam.launchers.vscodeCodex()),
+            children: launching === "vscode" ? "Opening…" : "Open in VS Code",
+          }),
+          f?.ok &&
+            f.fetchedAt &&
+            i.jsx("span", {
+              className: "gpt-updated",
+              children: `updated ${Tn(f.fetchedAt, o)}`,
+            }),
+        ],
+      }),
+      launchResult &&
+        i.jsxs("div", {
+          className: "banner launcher-result",
+          "data-kind": launchResult.ok ? "ok" : "warn",
+          role: "status",
+          children: [
+            i.jsx("span", { children: launchResult.message }),
+            !launchResult.ok &&
+              launchResult.helpTarget &&
+              i.jsx("button", {
+                className: "btn btn-small",
+                onClick: () =>
+                  window.cam.launchers.openHelp(launchResult.helpTarget),
+                children: "Install / help ↗",
+              }),
+          ],
+        }),
     ],
   });
 }
@@ -15071,7 +15084,6 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
         refreshing: gptRefreshing,
         onRefresh: refreshGptOnly,
       }),
-      i.jsx(GlobalLaunchers, {}),
       E?.type === "rename" &&
         i.jsx($o, {
           state: E.state,
@@ -19190,6 +19202,23 @@ function hy() {
     [_, Y] = q.useState(null),
     [U, H] = q.useState(null),
     [N, K] = q.useState(null),
+    [navCollapsed, setNavCollapsed] = q.useState(() => {
+      try {
+        return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+      } catch {
+        return !1;
+      }
+    }),
+    toggleNav = () =>
+      setNavCollapsed((collapsed) => {
+        try {
+          window.localStorage.setItem(
+            SIDEBAR_COLLAPSED_KEY,
+            collapsed ? "0" : "1",
+          );
+        } catch {}
+        return !collapsed;
+      }),
     nl = oy(v);
   (q.useEffect(() => {
     document.documentElement.dataset.theme = nl;
@@ -19239,6 +19268,7 @@ function hy() {
     W = ry(f);
   return i.jsxs("div", {
     className: "app-shell",
+    "data-nav-collapsed": navCollapsed || void 0,
     children: [
       i.jsx(Hv, {
         view: f,
@@ -19248,6 +19278,8 @@ function hy() {
         accountCount: U,
         themePref: v,
         onCycleTheme: k,
+        collapsed: navCollapsed,
+        onToggleCollapsed: toggleNav,
       }),
       i.jsxs("main", {
         className: "main-scroll",

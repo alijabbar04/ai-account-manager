@@ -42,6 +42,12 @@ async function run() {
   });
   await win.loadFile(path.resolve(__dirname, "../app/dist/index.html"));
   await new Promise((resolve) => setTimeout(resolve, 1_000));
+  if (view === "dashboard-collapsed") {
+    await win.webContents.executeJavaScript(
+      `document.querySelector(".sidebar-toggle")?.click()`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
   if (view === "settings") {
     await win.webContents.executeJavaScript(`
       [...document.querySelectorAll("button")]
@@ -87,7 +93,8 @@ async function run() {
     const workCard = cards.find((card) => card.innerText.includes("Work Example"));
     const personalCard = cards.find((card) => card.innerText.includes("Personal Example"));
     const gptCard = document.querySelector(".gpt-usage-card");
-    const launchers = document.querySelector(".global-launchers");
+    const gptActions = gptCard?.querySelector(".gpt-card-actions");
+    const sidebar = document.querySelector(".sidebar");
     const dashboardGrid = document.querySelector(".claude-dashboard-grid");
     const otherGrid = document.querySelector(".other-accounts-grid");
     const otherCards = otherGrid ? [...otherGrid.querySelectorAll(":scope > .card")] : [];
@@ -113,16 +120,24 @@ async function run() {
         personal: rect(personalCard),
         grid: rect(dashboardGrid),
         gpt: rect(gptCard),
-        launchers: rect(launchers),
+        gptActions: gptActions
+          ? [...gptActions.querySelectorAll("button")].map((button) => button.innerText.trim())
+          : [],
         gptMeters: gptCard?.querySelectorAll('[role="progressbar"]').length ?? 0,
+        planBadges: [...document.querySelectorAll(".plan-badge")].map((badge) => badge.innerText.trim()),
+        legacyLaunchers: Boolean(document.querySelector(".global-launchers")),
+        sidebar: rect(sidebar),
+        sidebarCollapsed: sidebar?.hasAttribute("data-collapsed") ?? false,
+        sidebarTitleClipped: (() => {
+          const title = document.querySelector(".sidebar-title");
+          return Boolean(title && title.offsetParent && title.scrollWidth > title.clientWidth + 1);
+        })(),
         ordered: Boolean(
           workCard &&
           personalCard &&
           gptCard &&
-          launchers &&
           workCard.compareDocumentPosition(personalCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
-          personalCard.compareDocumentPosition(gptCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
-          gptCard.compareDocumentPosition(launchers) & Node.DOCUMENT_POSITION_FOLLOWING
+          personalCard.compareDocumentPosition(gptCard) & Node.DOCUMENT_POSITION_FOLLOWING
         ),
       },
       accounts: {
@@ -144,7 +159,7 @@ async function run() {
       if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
     }
   } else if (view.startsWith("dashboard")) {
-    for (const value of ["New Claude Cowork", "GPT / Codex usage"]) {
+    for (const value of ["GPT / Codex usage", "Open in Codex App"]) {
       if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
     }
     for (const removed of [
@@ -158,10 +173,33 @@ async function run() {
     }
     const dashboard = smoke.dashboard;
     if (dashboard.gptMeters < 2) errors.push("GPT rolling meters are missing");
-    if (dashboard.launchers?.top < dashboard.gpt?.bottom) {
-      errors.push("global launchers do not follow GPT usage");
+    if (dashboard.legacyLaunchers) {
+      errors.push("the removed launcher strip is still rendered");
     }
-    if (view === "dashboard") {
+    if (
+      dashboard.gptActions.join("|") !== "Open in Codex App|Open in VS Code"
+    ) {
+      errors.push(
+        `GPT card actions are wrong: ${dashboard.gptActions.join(", ")}`,
+      );
+    }
+    if (view === "dashboard-collapsed") {
+      if (!dashboard.sidebarCollapsed || dashboard.sidebar?.width > 72) {
+        errors.push("sidebar did not collapse to its icon rail");
+      }
+    } else if (dashboard.sidebar?.width < 200) {
+      errors.push("sidebar is collapsed by default");
+    } else if (dashboard.sidebarTitleClipped) {
+      errors.push("the sidebar toggle truncates the product name");
+    }
+    if (view === "dashboard" || view === "dashboard-collapsed") {
+      if (
+        dashboard.planBadges.slice(0, 2).join("|") !== "Team Premium|Max 20x"
+      ) {
+        errors.push(
+          `plan badges are missing: ${dashboard.planBadges.join(", ")}`,
+        );
+      }
       for (const value of ["Work Example", "Personal Example"]) {
         if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
       }
