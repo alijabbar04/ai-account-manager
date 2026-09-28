@@ -5,9 +5,11 @@
 // Loads mobile/android/assets in a 390x844 window (the Android WebView's
 // bundled page, using its fetch fallback instead of the Java bridge), pairs it
 // with a PhoneSyncServer on 127.0.0.1, and screenshots the dashboard in both
-// themes, the PC-offline state and the unpaired state.
+// themes, the PC going offline, the app reopened while the PC is off, the PC
+// coming back, and the unpaired state.
 const { app, BrowserWindow } = require("electron");
 const fs = require("node:fs");
+const net = require("node:net");
 const path = require("node:path");
 const { PhoneSyncServer } = require("../app/dist-electron/phone-server.cjs");
 const { buildPhoneSnapshot } = require("../app/dist-electron/phone-domain.cjs");
@@ -109,6 +111,12 @@ async function until(win, expression, label, timeoutMs = 8000) {
 }
 
 async function shot(win, name) {
+  // A hidden window paints lazily; force a fresh frame so the capture shows
+  // the state the assertions just checked.
+  await win.webContents.executeJavaScript(
+    "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+  );
+  win.webContents.invalidate();
   await wait(250);
   const image = await win.webContents.capturePage();
   fs.writeFileSync(path.join(outputDir, `${name}.png`), image.toPNG());
@@ -231,9 +239,61 @@ async function run() {
   }
   await shot(win, "4-offline-dark");
 
+  // Reopened while the PC is off. An offline tailnet peer never refuses a
+  // connection, it just never answers, so hold sockets open like that. The
+  // saved figures must show at once, labelled last known.
+  const held = [];
+  const blackHole = net.createServer((socket) => held.push(socket));
+  await new Promise((resolve) => blackHole.listen(port, "127.0.0.1", resolve));
+  const reloaded = new Promise((resolve) =>
+    win.webContents.once("did-finish-load", resolve),
+  );
+  win.webContents.reload();
+  await reloaded;
+  await until(
+    win,
+    `document.querySelectorAll("article.card").length === 3`,
+    "saved cards after reopening",
+  );
+  const reopened = await win.webContents.executeJavaScript(`({
+    pill: document.querySelector(".sync-pill").dataset.kind,
+    text: document.querySelector(".sync-pill").textContent,
+    status: document.querySelector(".status").textContent,
+    notice: Boolean(document.querySelector(".notice")),
+    grey: [...document.querySelectorAll(".fill")].some((n) => n.dataset.kind === "stale"),
+  })`);
+  if (
+    reopened.pill !== "checking" ||
+    !reopened.text.startsWith("Last synced") ||
+    reopened.status !== "Last known" ||
+    reopened.notice ||
+    reopened.grey
+  ) {
+    throw new Error(`reopened: ${JSON.stringify(reopened)}`);
+  }
+  await shot(win, "5-reopened-while-off-dark");
+  for (const socket of held) socket.destroy();
+  await new Promise((resolve) => blackHole.close(resolve));
+  await until(
+    win,
+    `document.querySelector(".sync-pill")?.dataset.kind === "offline"`,
+    "offline after the hung request fails",
+    15000,
+  );
+
+  // The PC comes back: the next poll replaces the last known figures.
+  await server.listen("127.0.0.1", port);
+  await win.webContents.executeJavaScript(`window.aamResume()`);
+  await until(
+    win,
+    `document.querySelector(".sync-pill")?.dataset.kind === "online" &&
+      document.querySelector(".status")?.textContent === "Active"`,
+    "back online",
+  );
+  await shot(win, "6-back-online-dark");
+
   // Unpaired on the PC: the next sync returns 401 and the phone asks to pair.
   deviceToken = "revoked-token-value-000000";
-  await server.listen("127.0.0.1", port);
   await win.webContents.executeJavaScript(`window.aamResume()`);
   await until(win, `Boolean(document.querySelector("form.form"))`, "unpaired");
   const unpaired = await win.webContents.executeJavaScript(
@@ -242,7 +302,7 @@ async function run() {
   if (!/no longer paired/.test(unpaired)) {
     throw new Error(`unpaired message: ${unpaired}`);
   }
-  await shot(win, "5-unpaired-dark");
+  await shot(win, "7-unpaired-dark");
   await server.close();
 
   if (errors.length) throw new Error(`console errors: ${errors.join(" | ")}`);

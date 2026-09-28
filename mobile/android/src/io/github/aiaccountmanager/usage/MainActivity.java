@@ -39,6 +39,9 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
     private static final String PAGE = "file:///android_asset/index.html";
     private static final int MAX_RESPONSE_BYTES = 512 * 1024;
+    private static final String PREFS = "aam-usage";
+    private static final String STATE_KEY = "state";
+    private static final int MAX_STATE_CHARS = 1024 * 1024;
 
     private final ExecutorService network = Executors.newFixedThreadPool(2);
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -200,6 +203,26 @@ public class MainActivity extends Activity {
     }
 
     final class Bridge {
+        /**
+         * The pairing and the last snapshot live in the app's private
+         * preferences, not WebView storage, so the last known figures
+         * survive the app being closed, swiped away or updated.
+         */
+        @JavascriptInterface
+        public String loadState() {
+            return getSharedPreferences(PREFS, MODE_PRIVATE).getString(STATE_KEY, "");
+        }
+
+        @JavascriptInterface
+        public boolean saveState(String json) {
+            if (json == null || json.length() > MAX_STATE_CHARS) return false;
+            // commit(), not apply(): the app may be swiped away right after a sync.
+            return getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit()
+                    .putString(STATE_KEY, json)
+                    .commit();
+        }
+
         @JavascriptInterface
         public String deviceName() {
             String name = Settings.Global.getString(getContentResolver(), "device_name");

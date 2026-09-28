@@ -17,9 +17,16 @@ use, so a phone refreshing one would sign the PC out. Instead:
 3. The phone reads that snapshot over your tailnet, every minute while the app
    is open, and when you tap **↻**, which also asks the PC to poll now (at most
    once a minute).
-4. The phone keeps the last snapshot. When the PC is off or unreachable it shows
-   those numbers marked *Last known*. Reset times are absolute, so countdowns
-   stay right offline.
+4. After every successful sync the phone saves the snapshot to the app's
+   private storage, so it survives closing the app, a phone restart and app
+   updates. Opened with the PC off or unreachable, the app shows those figures
+   straight away, marked *Last known* ("Last synced 3h ago · connecting…", then
+   *PC offline* once the connection attempt fails). Reset times are absolute,
+   so countdowns stay right offline, and a window whose reset has passed shows
+   *reset since last update* rather than a stale percentage.
+5. While the app is open it keeps trying once a minute, so the figures update
+   within a minute of the PC coming back. It does not sync in the background
+   while closed. It catches up the next time you open it.
 
 So the phone can only be as fresh as the PC. It updates while AI Account Manager
 is running, which is why phone sharing keeps the app in the tray when you close

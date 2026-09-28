@@ -13,20 +13,40 @@
   const native = window.AamNative || null;
 
   // --- Persistence --------------------------------------------------------
-  function load() {
+  // The pairing and the last snapshot are saved after every change and read
+  // back on launch, so the last known figures show even when the app is
+  // reopened while the PC is off. On Android they live in the app's private
+  // preferences (native.saveState); WebView storage is a secondary copy.
+  function parseState(text) {
     try {
-      const value = JSON.parse(window.localStorage.getItem(STORE_KEY) || "{}");
+      const value = JSON.parse(text || "{}");
       return value && typeof value === "object" ? value : {};
     } catch (err) {
       return {};
     }
   }
+  function load() {
+    let value = {};
+    if (native && native.loadState) value = parseState(native.loadState());
+    if (!value.token) {
+      // 1.0.0 kept its state only in WebView storage; carry it over once.
+      let legacy = {};
+      try {
+        legacy = parseState(window.localStorage.getItem(STORE_KEY));
+      } catch (err) {}
+      if (legacy.token) value = legacy;
+    }
+    return value;
+  }
   const store = load();
   function save() {
+    const text = JSON.stringify(store);
+    if (native && native.saveState) native.saveState(text);
     try {
-      window.localStorage.setItem(STORE_KEY, JSON.stringify(store));
+      window.localStorage.setItem(STORE_KEY, text);
     } catch (err) {}
   }
+  if (native && native.saveState && store.token) save();
 
   const ui = {
     screen: store.token ? "dashboard" : "pair",
@@ -387,7 +407,7 @@
     );
   }
 
-  function meter(limit, stale) {
+  function meter(limit, offline) {
     const now = Date.now();
     const passed = Boolean(limit.resetsAt && limit.resetsAt <= now);
     const percent = Math.round(limit.percent);
@@ -424,14 +444,16 @@
         },
         el("div", {
           class: "fill",
-          "data-kind": stale ? "stale" : limit.severity,
+          "data-kind": offline ? "stale" : limit.severity,
           width: width + "%",
         }),
       ),
     );
   }
 
-  function card(account, stale) {
+  // view.stale: not yet confirmed by the PC this session (label as last known).
+  // view.offline: the PC was tried and is unreachable (grey the bars too).
+  function card(account, view) {
     const gpt = account.provider === "gpt";
     const roleLabel =
       account.role === "work"
@@ -446,7 +468,7 @@
       : account.email
         ? roleLabel + " · " + account.email
         : roleLabel;
-    const kind = stale ? "stale" : account.status.kind;
+    const kind = view.stale ? "stale" : account.status.kind;
     return el(
       "article",
       { class: "card", "data-provider": account.provider },
@@ -475,7 +497,7 @@
         el("span", {
           class: "status",
           "data-kind": kind,
-          text: stale ? "Last known" : account.status.label,
+          text: view.stale ? "Last known" : account.status.label,
         }),
       ),
       account.limits.length > 0 &&
@@ -483,7 +505,7 @@
           null,
           ["div", { class: "meters" }].concat(
             account.limits.map(function (limit) {
-              return meter(limit, stale);
+              return meter(limit, view.offline);
             }),
           ),
         ),
@@ -511,9 +533,11 @@
 
   function dashboard() {
     const snapshot = store.snapshot;
-    const stale = ui.online === false;
+    const confirmed = ui.online === true;
+    const offline = ui.online === false;
+    const view = { stale: !confirmed, offline: offline };
     const pill =
-      ui.online === true && store.lastOkAt
+      confirmed && store.lastOkAt
         ? {
             kind: "online",
             text:
@@ -522,7 +546,7 @@
               " · " +
               ago(store.lastOkAt),
           }
-        : stale
+        : offline
           ? {
               kind: "offline",
               text: store.lastOkAt
@@ -530,8 +554,12 @@
                 : "Can't reach your PC",
             }
           : {
-              kind: "online",
-              text: ui.syncing ? "Syncing with your PC…" : "Connecting…",
+              // Reopened with saved figures: they are last known until the PC
+              // answers, which takes a few seconds to fail when it is off.
+              kind: "checking",
+              text: store.lastOkAt
+                ? "Last synced " + ago(store.lastOkAt) + " · connecting…"
+                : "Connecting to your PC…",
             };
     const nodes = [
       header(true),
@@ -546,7 +574,7 @@
         ),
       ),
     ];
-    if (stale) {
+    if (offline) {
       nodes.push(
         el("p", {
           class: "notice",
@@ -558,13 +586,13 @@
     }
     const cards = el("main", { class: "cards" });
     for (const account of (snapshot && snapshot.accounts) || []) {
-      cards.append(card(account, stale));
+      cards.append(card(account, view));
     }
     nodes.push(cards);
     nodes.push(
       el("footer", {
         class: "foot",
-        text: stale
+        text: !confirmed
           ? "Numbers update as soon as your PC is back online"
           : "Your PC sends fresh numbers every 10 minutes · ↻ asks for them now",
       }),
