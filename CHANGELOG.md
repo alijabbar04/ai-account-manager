@@ -17,6 +17,13 @@ not full histories.
 - The GPT / Codex card has **Open in Codex App** and **Open in VS Code**.
 - The sidebar collapses to an icon rail with the toggle beside the product name.
   The choice persists across restarts.
+- **Phone companion.** *Settings › Phone companion* shares the dashboard's usage
+  with a read-only Android app over Tailscale: listening on the Tailscale address
+  only, paired with a one-time QR code, with the device token stored
+  DPAPI-encrypted. The app (`mobile/android`, built with
+  `node mobile/android/build.cjs`) keeps the last numbers for when the PC is
+  offline. While sharing is on, closing the window leaves the app running in
+  the tray. See `docs/PHONE_COMPANION.md`.
 
 ### Changed
 

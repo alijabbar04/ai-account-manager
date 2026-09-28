@@ -120,3 +120,6 @@ pnpm-debug.log*
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Phone companion APK build output (the signing key lives outside the repo)
+mobile/android/build/

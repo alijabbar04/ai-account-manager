@@ -25,6 +25,20 @@ var api = {
   refreshGptUsage: () => import_electron.ipcRenderer.invoke("gpt:refresh"),
   getClaudeHistory: (days) =>
     import_electron.ipcRenderer.invoke("claude:history", days),
+  phone: {
+    get: () => import_electron.ipcRenderer.invoke("phone:get"),
+    set: (patch) => import_electron.ipcRenderer.invoke("phone:set", patch),
+    pair: () => import_electron.ipcRenderer.invoke("phone:pair"),
+    cancelPairing: () =>
+      import_electron.ipcRenderer.invoke("phone:cancelPairing"),
+    unpair: () => import_electron.ipcRenderer.invoke("phone:unpair"),
+    onChanged: (cb) => {
+      const listener = (_e, view) => cb(view);
+      import_electron.ipcRenderer.on("phone:changed", listener);
+      return () =>
+        import_electron.ipcRenderer.removeListener("phone:changed", listener);
+    },
+  },
   onGptUsageChanged: (cb) => {
     const listener = (_e, usage) => cb(usage);
     import_electron.ipcRenderer.on("gpt:usage-changed", listener);

@@ -88,6 +88,9 @@ Full walkthrough: [docs/INSTALL.md](docs/INSTALL.md).
   pane to an icon rail, and the choice is remembered.
 - **Open in VS Code opens one window.** The VS Code CLI calls made before each
   launch were starting a second, full VS Code window.
+- **Phone companion**: a read-only Android app, *AI Account Usage*, shows the
+  dashboard's three accounts on your phone over Tailscale. The PC shares usage
+  numbers only, never tokens. See [docs/PHONE_COMPANION.md](docs/PHONE_COMPANION.md).
 
 ## What's in 1.7.0
 

@@ -7,8 +7,8 @@
   "main": "app/dist-electron/main.cjs",
   "scripts": {
     "start": "electron .",
-    "format": "prettier --write app scripts tests .github",
-    "format:check": "prettier --check app scripts tests .github",
+    "format": "prettier --write app scripts tests mobile .github",
+    "format:check": "prettier --check app scripts tests mobile .github",
     "verify": "node scripts/verify-runtime.cjs",
     "verify:safestorage": "node scripts/verify-safestorage-migration.cjs",
     "test:runtime": "node --test tests/*.test.cjs && node scripts/verify-runtime.cjs",
@@ -22,6 +22,7 @@
     "release:manifest": "node scripts/make-manifest.cjs"
   },
   "dependencies": {
+    "qrcode-generator": "2.0.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
