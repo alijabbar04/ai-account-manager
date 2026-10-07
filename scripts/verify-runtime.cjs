@@ -6,6 +6,24 @@ const { spawnSync } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
 const files = {
   main: path.join(root, "app", "dist-electron", "main.cjs"),
+  antigravityRuntime: path.join(
+    root,
+    "app",
+    "dist-electron",
+    "antigravity-runtime.cjs",
+  ),
+  claudePlanRuntime: path.join(
+    root,
+    "app",
+    "dist-electron",
+    "claude-plan-runtime.cjs",
+  ),
+  codexPlanDomain: path.join(
+    root,
+    "app",
+    "dist-electron",
+    "codex-plan-domain.cjs",
+  ),
   preload: path.join(root, "app", "dist-electron", "preload.cjs"),
   renderer: path.join(root, "app", "dist", "assets", "index-CfQCNBzk.js"),
   css: path.join(root, "app", "dist", "assets", "index-DR09S7BQ.css"),
@@ -66,6 +84,9 @@ for (const [name, file] of Object.entries(files)) {
 
 for (const file of [
   files.main,
+  files.antigravityRuntime,
+  files.claudePlanRuntime,
+  files.codexPlanDomain,
   files.preload,
   files.renderer,
   files.automationDomain,
@@ -90,6 +111,7 @@ for (const channel of [
   "profiles:launchVSCodeProject",
   "antigravity:status",
   "antigravity:launch",
+  "antigravity:signIn",
   "claude:history",
   "alerts:get",
   "alerts:set",
@@ -149,10 +171,8 @@ for (const feature of [
   "Open VS Code project…",
   "Open Antigravity",
   "Collapse sidebar",
-  "Pro 5x",
-  "Pro 20x",
-  "Max 5x",
-  "Max 20x",
+  "Detected from your account. Updates automatically.",
+  "ProviderBrand",
   "New Codex chat",
   "New VS Code Codex",
   "Profile visibility",

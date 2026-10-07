@@ -134,6 +134,10 @@ const gptUsage = {
 let otherAccountsLayout =
   process.env.SMOKE_SAVED_LAYOUT === "wide" ? "wide" : "grid";
 const launchCalls = [];
+const gptListeners = new Set();
+const stateListeners = new Set();
+let antigravitySignedIn = process.env.SMOKE_ANTIGRAVITY_SIGNED_OUT !== "1";
+let antigravityPlan = "Google AI Pro";
 let listStatesCalls = 0;
 let layoutSetCalls = 0;
 
@@ -143,11 +147,17 @@ contextBridge.exposeInMainWorld("cam", {
     listStatesCalls += 1;
     return states;
   },
-  onStateChanged: noopSubscription,
+  onStateChanged: (callback) => {
+    stateListeners.add(callback);
+    return () => stateListeners.delete(callback);
+  },
   refreshUsage: async () => ({ ok: true }),
   getGptUsage: async () => gptUsage,
   refreshGptUsage: async () => gptUsage,
-  onGptUsageChanged: noopSubscription,
+  onGptUsageChanged: (callback) => {
+    gptListeners.add(callback);
+    return () => gptListeners.delete(callback);
+  },
   getTheme: async () => process.env.SMOKE_THEME ?? "dark",
   setTheme: async () => undefined,
   launchVSCode: async (id) => {
@@ -163,18 +173,29 @@ contextBridge.exposeInMainWorld("cam", {
   revealFolder: async () => undefined,
   antigravity: {
     status: async () => ({
-      extensionInstalled: true,
-      extensionVersion: "1.7.0",
-      usageAvailable: false,
-      message: "Live quota unavailable. Check Model Quotas in Antigravity.",
+      nativeInstalled: true,
+      loggedIn: antigravitySignedIn,
+      account: antigravitySignedIn
+        ? { email: "antigravity@example.test", planLabel: antigravityPlan }
+        : null,
+      limits: antigravitySignedIn
+        ? [
+            {
+              key: "gemini",
+              label: "Gemini Pro",
+              usedPercent: 23,
+              resetsAt: Math.floor((now + 3600000) / 1000),
+            },
+          ]
+        : [],
     }),
+    signIn: async () => {
+      launchCalls.push(["antigravity", "signin"]);
+      return { ok: true };
+    },
     launch: async (kind) => {
       launchCalls.push(["antigravity", kind]);
-      return {
-        ok: true,
-        cancelled: kind === "project",
-        message: "Antigravity opened.",
-      };
+      return { ok: true, cancelled: kind === "project" };
     },
   },
   visibility: {
@@ -194,6 +215,13 @@ contextBridge.exposeInMainWorld("cam", {
   },
   __visualSmoke: {
     stats: async () => ({ listStatesCalls, layoutSetCalls, launchCalls }),
+    changePlans: async () => {
+      gptUsage.account.planLabel = "Pro 200";
+      antigravityPlan = "Google AI Ultra";
+      states[0].identity.rateLimitTier = "default_claude_max_20x";
+      for (const listener of gptListeners) listener({ ...gptUsage });
+      for (const listener of stateListeners) listener([...states]);
+    },
   },
   launchers: {
     claudeCowork: async () => ({ ok: true }),

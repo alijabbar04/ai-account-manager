@@ -52,6 +52,7 @@ var api = {
       import_electron.ipcRenderer.invoke("launchers:help", target),
   },
   antigravity: {
+    signIn: () => import_electron.ipcRenderer.invoke("antigravity:signIn"),
     status: () => import_electron.ipcRenderer.invoke("antigravity:status"),
     launch: (kind) =>
       import_electron.ipcRenderer.invoke("antigravity:launch", kind),

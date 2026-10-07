@@ -13563,6 +13563,7 @@ function CodexLaunchers() {
         ],
       }),
       f &&
+        !f.ok &&
         i.jsxs("div", {
           className: "banner launcher-result",
           "data-kind": f.ok ? "ok" : "warn",
@@ -13606,59 +13607,36 @@ function Jo({
       () => document.removeEventListener("mousedown", k)
     );
   }, [C]);
-  const nl = [_.email].filter(Boolean),
-    ol = Y ? Xv(Y.limits) : [],
-    roleLabel =
-      dashboardRole === "work"
-        ? "Work"
-        : dashboardRole === "personal"
-          ? "Personal"
-          : null;
+  const ol = Y ? Xv(Y.limits) : [];
   return i.jsxs("article", {
     className: "card claude-account-card",
     "data-status": N.kind,
+    "data-profile-id": R.id,
     children: [
       i.jsxs("header", {
-        className: "card-head",
+        className: "provider-card-head",
         children: [
-          i.jsx("span", {
-            className: "dot",
-            "data-kind": N.kind,
-            "aria-hidden": "true",
+          i.jsx(ProviderBrand, { provider: "claude" }),
+          i.jsxs("div", {
+            className: "provider-card-identity",
+            children: [
+              i.jsxs("div", {
+                className: "provider-title-line",
+                children: [
+                  i.jsx("h3", {
+                    className: "card-name",
+                    children: dashboardRole ? "Claude" : R.name,
+                  }),
+                  i.jsx(AccountPlanBadge, { provider: "claude", account: _ }),
+                ],
+              }),
+              _.email &&
+                i.jsx("div", {
+                  className: "provider-account-email",
+                  children: _.email,
+                }),
+            ],
           }),
-          i.jsx("h3", {
-            className: "card-name",
-            title: R.configDir,
-            children: R.name,
-          }),
-          H &&
-            i.jsx("span", {
-              className: "badge badge-default",
-              children: "Default",
-            }),
-          i.jsx(AccountPlanBadge, {
-            provider: "claude",
-            account: _,
-            accountId: R.id,
-          }),
-          roleLabel &&
-            i.jsx("span", {
-              className: "badge",
-              children: roleLabel,
-            }),
-          i.jsx("span", {
-            className: "status-label",
-            "data-kind": N.kind,
-            children: N.label,
-          }),
-          hideProfile &&
-            i.jsx("button", {
-              className: "btn btn-icon visibility-button",
-              title: `Hide ${R.name} from profile views`,
-              "aria-label": `Hide ${R.name} from profile views`,
-              onClick: hideProfile,
-              children: i.jsx(ProfileVisibilityIcon, {}),
-            }),
           i.jsxs("div", {
             className: "menu-wrap",
             ref: B,
@@ -13724,11 +13702,6 @@ function Jo({
             ],
           }),
         ],
-      }),
-      i.jsx("div", {
-        className: "card-sub",
-        title: R.configDir,
-        children: nl.length > 0 ? nl.join(" · ") : "Isolated Claude profile",
       }),
       _.loggedIn
         ? i.jsxs(i.Fragment, {
@@ -14129,6 +14102,7 @@ function Wo({ state: f, onClose: o, onDone: v }) {
   });
 }
 function detectedAccountPlan(provider, account) {
+  if (account?.planLabel) return account.planLabel;
   const raw = String(
     provider === "claude"
       ? (account?.subscriptionType ??
@@ -14146,13 +14120,12 @@ function detectedAccountPlan(provider, account) {
     : /(?:^|[^0-9])5x(?:$|[^a-z0-9])/.test(combined)
       ? "5x"
       : null;
-  if (/max/.test(combined))
-    return multiplier ? `Max ${multiplier}` : "Max · tier unavailable";
+  if (/max/.test(combined)) return multiplier ? `Max ${multiplier}` : "Max";
   if (/pro/.test(raw))
     return provider === "codex"
       ? multiplier
         ? `Pro ${multiplier}`
-        : "Pro · tier unavailable"
+        : "Pro"
       : "Pro";
   const names = {
     plus: "Plus",
@@ -14168,59 +14141,25 @@ function detectedAccountPlan(provider, account) {
       ? raw
           .replace(/[_-]+/g, " ")
           .replace(/\b\w/g, (value) => value.toUpperCase())
-      : "Plan unavailable")
+      : "Plan pending")
   );
 }
-function AccountPlanBadge({ provider, account, accountId }) {
-  const key = `aam-plan:${provider}:${accountId ?? account?.email ?? "signed-in"}`;
-  const [override, setOverride] = q.useState(() => {
-    try {
-      return localStorage.getItem(key) ?? "";
-    } catch {
-      return "";
-    }
+function AccountPlanBadge({ provider, account }) {
+  if (!account || account.loggedIn === false) return null;
+  const plan = detectedAccountPlan(provider, account);
+  return i.jsx("span", {
+    className: `account-plan-badge ${provider}-plan-badge`,
+    "aria-label": `${provider === "claude" ? "Claude" : provider === "antigravity" ? "Antigravity" : "Codex"} plan: ${plan}`,
+    title: "Detected from your account. Updates automatically.",
+    children: plan,
   });
-  q.useEffect(() => {
-    try {
-      setOverride(localStorage.getItem(key) ?? "");
-    } catch {
-      setOverride("");
-    }
-  }, [key]);
-  const detected = detectedAccountPlan(provider, account);
-  const choices =
-    provider === "claude"
-      ? ["Free", "Pro", "Max 5x", "Max 20x", "Team", "Enterprise"]
-      : provider === "antigravity"
-        ? ["Free", "Google AI Pro", "Google AI Ultra", "Enterprise"]
-        : [
-            "Free",
-            "Plus",
-            "Pro 5x",
-            "Pro 20x",
-            "Business",
-            "Enterprise",
-            "Edu",
-          ];
-  return i.jsxs("select", {
-    className: `account-plan-badge ${provider === "codex" ? "gpt-plan-badge" : "claude-plan-badge"}`,
-    "aria-label": `${provider === "claude" ? "Claude" : provider === "antigravity" ? "Antigravity" : "Codex"} plan`,
-    title:
-      "Auto uses account data. Choose your plan if the service does not report the exact tier.",
-    value: choices.includes(override) ? override : "",
-    onChange: (event) => {
-      const value = event.target.value;
-      setOverride(value);
-      try {
-        value ? localStorage.setItem(key, value) : localStorage.removeItem(key);
-      } catch {}
-    },
-    children: [
-      i.jsx("option", { value: "", children: `${detected} (auto)` }),
-      ...choices.map((value) =>
-        i.jsx("option", { value, children: value }, value),
-      ),
-    ],
+}
+function ProviderBrand({ provider }) {
+  const symbol = provider === "codex" ? "openai" : provider;
+  return i.jsx("div", {
+    className: `provider-brand ${provider}-brand`,
+    "aria-hidden": "true",
+    children: i.jsx("img", { src: `./assets/${symbol}-symbol.svg`, alt: "" }),
   });
 }
 function formatGptTokens(f) {
@@ -14250,11 +14189,12 @@ function gptBucketName(f) {
 function collectGptWindows(f) {
   const o = f?.rateLimits;
   if (!o) return [];
-  const v = o.rateLimitsByLimitId
-      ? Object.values(o.rateLimitsByLimitId)
-      : o.rateLimits
-        ? [o.rateLimits]
-        : [],
+  const v =
+      o.rateLimitsByLimitId && Object.keys(o.rateLimitsByLimitId).length > 0
+        ? Object.values(o.rateLimitsByLimitId)
+        : o.rateLimits
+          ? [o.rateLimits]
+          : [],
     d = [],
     x = /* @__PURE__ */ new Set();
   for (const E of v) {
@@ -14318,28 +14258,27 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
     D = f?.account;
   return i.jsxs("section", {
     className: "card gpt-usage-card",
-    "aria-label": "GPT and Codex account usage",
+    "aria-label": "Codex account usage",
     children: [
       i.jsxs("div", {
-        className: "gpt-card-head",
+        className: "provider-card-head",
         children: [
-          i.jsx("div", { className: "gpt-brand-mark", children: "GPT" }),
+          i.jsx(ProviderBrand, { provider: "codex" }),
           i.jsxs("div", {
-            className: "gpt-card-title-wrap",
+            className: "provider-card-identity",
             children: [
               i.jsxs("div", {
-                className: "gpt-card-title-line",
+                className: "provider-title-line",
                 children: [
-                  i.jsx("h2", { children: "GPT / Codex usage" }),
+                  i.jsx("h2", { children: "Codex" }),
                   i.jsx(AccountPlanBadge, { provider: "codex", account: D }),
                 ],
               }),
-              i.jsx("div", {
-                className: "gpt-account-line",
-                children: D?.email
-                  ? `${D.email} · signed-in ChatGPT account`
-                  : "Signed-in ChatGPT account",
-              }),
+              D?.email &&
+                i.jsx("div", {
+                  className: "provider-account-email",
+                  children: D.email,
+                }),
             ],
           }),
           i.jsx("button", {
@@ -14353,13 +14292,13 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
       f === null
         ? i.jsx("div", {
             className: "gpt-loading",
-            children: "Loading GPT usage from Codex…",
+            children: "Loading usage…",
           })
         : !f.ok
           ? i.jsxs("div", {
               className: "gpt-error",
               children: [
-                i.jsx("strong", { children: "GPT usage unavailable" }),
+                i.jsx("strong", { children: "Usage unavailable" }),
                 i.jsx("span", {
                   children:
                     f.error ??
@@ -14386,73 +14325,78 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
                     className: "gpt-warning",
                     children: f.warning,
                   }),
-                i.jsxs("div", {
-                  className: "gpt-card-foot",
-                  children: [
-                    i.jsx("span", {
-                      children:
-                        "ChatGPT plan usage via the local Codex service",
-                    }),
-                    i.jsx("span", {
-                      children: f.fetchedAt
-                        ? `updated ${Tn(f.fetchedAt, o)}`
-                        : "",
-                    }),
-                  ],
-                }),
               ],
             }),
       i.jsx(CodexLaunchers, {}),
     ],
   });
 }
-function AntigravityCard() {
+function AntigravityCard({ now, refreshSignal }) {
   const [status, setStatus] = q.useState(null);
   const [pending, setPending] = q.useState(null);
-  const [result, setResult] = q.useState(null);
-  const refresh = async () => {
+  const [error, setError] = q.useState(null);
+  const [refreshing, setRefreshing] = q.useState(false);
+  const busy = q.useRef(false);
+  const refresh = q.useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setRefreshing(true);
     try {
       setStatus(await window.cam.antigravity.status());
-    } catch (error) {
+    } catch (value) {
       setStatus({
-        message: error.message ?? "Antigravity status unavailable.",
+        loggedIn: null,
+        error: value.message ?? "Account status unavailable.",
       });
+    } finally {
+      busy.current = false;
+      setRefreshing(false);
     }
-  };
+  }, []);
   q.useEffect(() => {
     refresh();
-  }, []);
+    const timer = window.setInterval(refresh, 60000);
+    const visible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [refresh, refreshSignal]);
   const launch = async (kind) => {
     setPending(kind);
-    setResult(null);
+    setError(null);
     try {
-      const value = await window.cam.antigravity.launch(kind);
-      if (!value.cancelled) setResult(value);
-    } catch (error) {
-      setResult({
-        ok: false,
-        error: error.message ?? "Could not open Antigravity.",
-      });
+      const value =
+        kind === "signin"
+          ? await window.cam.antigravity.signIn()
+          : await window.cam.antigravity.launch(kind);
+      if (!value.ok && !value.cancelled)
+        setError(value.error ?? "Could not open Antigravity.");
+    } catch (value) {
+      setError(value.message ?? "Could not open Antigravity.");
     } finally {
       setPending(null);
     }
   };
+  const limits = status?.limits ?? [];
   return i.jsxs("section", {
     className: "card antigravity-card",
-    "aria-label": "Antigravity account and launchers",
+    "aria-label": "Antigravity account usage",
     children: [
-      i.jsxs("div", {
-        className: "gpt-card-head",
+      i.jsxs("header", {
+        className: "provider-card-head",
         children: [
-          i.jsx("div", {
-            className: "gpt-brand-mark antigravity-brand-mark",
-            children: "AG",
-          }),
+          i.jsx(ProviderBrand, { provider: "antigravity" }),
           i.jsxs("div", {
-            className: "gpt-card-title-wrap",
+            className: "provider-card-identity",
             children: [
               i.jsxs("div", {
-                className: "gpt-card-title-line",
+                className: "provider-title-line",
                 children: [
                   i.jsx("h2", { children: "Antigravity" }),
                   i.jsx(AccountPlanBadge, {
@@ -14461,32 +14405,49 @@ function AntigravityCard() {
                   }),
                 ],
               }),
-              i.jsx("div", {
-                className: "gpt-account-line",
-                children: status
-                  ? status.nativeInstalled
-                    ? "Antigravity app installed"
-                    : status.extensionInstalled
-                      ? `VS Code extension ${status.extensionVersion ?? ""} installed`
-                      : "Antigravity installation not detected"
-                  : "Checking Antigravity…",
-              }),
+              status?.account?.email &&
+                i.jsx("div", {
+                  className: "provider-account-email",
+                  children: status.account.email,
+                }),
             ],
           }),
           i.jsx("button", {
             className: "btn btn-small",
             onClick: refresh,
-            children: "↻ Refresh",
+            disabled: refreshing,
+            children: refreshing ? "Refreshing…" : "↻ Refresh",
           }),
         ],
       }),
-      i.jsx("div", {
-        className: "gpt-empty-limits",
-        children: status?.message ?? "Loading Antigravity status…",
-      }),
+      limits.length > 0
+        ? i.jsx("div", {
+            className: "meters",
+            children: limits.map((limit, index) =>
+              i.jsx(GptUsageMeter, { window: limit, now }, limit.key ?? index),
+            ),
+          })
+        : i.jsx("div", {
+            className: "account-empty-state",
+            children: !status
+              ? "Loading usage…"
+              : status.loggedIn === false
+                ? "Sign in to see your plan and usage."
+                : (status.error ??
+                  status.message ??
+                  "Usage is temporarily unavailable."),
+          }),
       i.jsxs("footer", {
         className: "card-actions",
         children: [
+          status &&
+            status.loggedIn !== true &&
+            i.jsx("button", {
+              className: "btn btn-primary",
+              disabled: pending !== null,
+              onClick: () => launch("signin"),
+              children: pending === "signin" ? "Opening…" : "Sign in",
+            }),
           ...[
             ["app", "Open Antigravity"],
             ["vscode", "Open in VS Code"],
@@ -14503,21 +14464,14 @@ function AntigravityCard() {
               kind,
             ),
           ),
-          i.jsx("a", {
-            className: "btn",
-            href: "https://antigravity.google/docs/cli/commands/usage",
-            target: "_blank",
-            rel: "noreferrer",
-            children: "Usage guide ↗",
-          }),
         ],
       }),
-      result &&
+      error &&
         i.jsx("div", {
           className: "banner launcher-result",
-          "data-kind": result.ok ? "ok" : "warn",
-          role: "status",
-          children: result.message ?? result.error,
+          "data-kind": "warn",
+          role: "alert",
+          children: error,
         }),
     ],
   });
@@ -15055,7 +15009,8 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
     [showAlerts, setShowAlerts] = q.useState(!1),
     [showUpdates, setShowUpdates] = q.useState(!1),
     [showPersonalAdd, setShowPersonalAdd] = q.useState(!1),
-    [undo, setUndo] = q.useState(null);
+    [undo, setUndo] = q.useState(null),
+    [antigravityRefresh, setAntigravityRefresh] = q.useState(0);
   q.useEffect(
     () => (window.cam.listStates().then(x), window.cam.onStateChanged(x)),
     [],
@@ -15083,6 +15038,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
       }
     },
     refreshAll = async () => {
+      setAntigravityRefresh((value) => value + 1);
       (C(!0), setGptRefreshing(!0));
       try {
         const [, usageResult] = await Promise.allSettled([
@@ -15269,7 +15225,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
         refreshing: gptRefreshing,
         onRefresh: refreshGptOnly,
       }),
-      i.jsx(AntigravityCard, {}),
+      i.jsx(AntigravityCard, { now: f, refreshSignal: antigravityRefresh }),
       E?.type === "rename" &&
         i.jsx($o, {
           state: E.state,

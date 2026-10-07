@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.3] — 2026-10-07
+
+### Changed
+
+- Show consistent Claude, Codex and Antigravity account cards with provider symbols, automatic plan labels, email addresses and compact usage/action spacing.
+- Remove manual plan selectors, Claude role/status/visibility badges, and redundant account/service descriptions and launcher success banners.
+- Refresh Claude subscription metadata from its OAuth profile and reconcile Codex's plan with fresh rate-limit metadata, so subscription changes update automatically.
+- Read Antigravity's native account service for its signed-in account, exact plan and live quotas. Keep the VS Code extension's separate sign-in state from replacing the native account.
+- Open the native Antigravity app from its app button and provide its browser sign-in flow when needed. Refresh Antigravity on the dashboard's Refresh button, focus and a one-minute timer.
+
 ## [1.7.2] — 2026-10-07
 
 ### Changed

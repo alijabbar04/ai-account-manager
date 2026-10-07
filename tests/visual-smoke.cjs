@@ -84,8 +84,8 @@ async function run() {
       };
     };
     const cards = [...document.querySelectorAll("article.card")];
-    const workCard = cards.find((card) => card.innerText.includes("Work Example"));
-    const personalCard = cards.find((card) => card.innerText.includes("Personal Example"));
+    const workCard = cards.find((card) => card.dataset.profileId === "work-smoke");
+    const personalCard = cards.find((card) => card.dataset.profileId === "personal-smoke");
     const gptCard = document.querySelector(".gpt-usage-card");
     const launchers = gptCard?.querySelector(".codex-launchers");
     const antigravity = document.querySelector(".antigravity-card");
@@ -148,11 +148,17 @@ async function run() {
       "New Codex chat",
       "New VS Code Codex",
       "Open VS Code project…",
-      "GPT / Codex usage",
+      "Codex",
     ]) {
       if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
     }
     for (const removed of [
+      "GPT / Codex usage",
+      "signed-in ChatGPT account",
+      "ChatGPT plan usage via the local Codex service",
+      "VS Code extension 1.7.0",
+      "Usage guide",
+      "Select the Antigravity icon to start a chat",
       "Start something new",
       "Choose an account",
       "Lifetime tokens",
@@ -178,7 +184,7 @@ async function run() {
       errors.push("Codex launchers are not contained in the Codex card");
     }
     if (view === "dashboard") {
-      for (const value of ["Work Example", "Personal Example"]) {
+      for (const value of ["Claude", "Max 5x"]) {
         if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
       }
       if (!dashboard.ordered)
@@ -291,12 +297,18 @@ async function run() {
       click(".antigravity-card", "Open Antigravity"); await tick();
       click(".antigravity-card", "Open in VS Code"); await tick();
       click(".antigravity-card", "Open VS Code project…"); await tick();
-      const plan = document.querySelector(".gpt-usage-card select");
-      plan.value = "Pro 20x"; plan.dispatchEvent(new Event("change", { bubbles: true })); await tick();
-      const chosen = plan.value === "Pro 20x" && localStorage.getItem("aam-plan:codex:codex@example.test") === "Pro 20x";
-      plan.value = ""; plan.dispatchEvent(new Event("change", { bubbles: true })); await tick();
-      return { ...(await window.cam.__visualSmoke.stats()), chosen,
-        claudePlan: document.querySelector(".claude-account-card select option").textContent };
+      if (${JSON.stringify(process.env.SMOKE_ANTIGRAVITY_SIGNED_OUT === "1")}) { click(".antigravity-card", "Sign in"); await tick(); }
+      const images = [...document.querySelectorAll(".provider-brand img")];
+      const logosLoaded = images.length >= 4 && images.every(img => img.complete && img.naturalWidth > 0);
+      const cleanClaudeHeaders = [...document.querySelectorAll(".claude-account-card")].every(card =>
+        card.querySelector(".card-name").textContent === "Claude" && !card.querySelector(".visibility-button, .status-label, .badge, .dot"));
+      const beforeClaude = document.querySelector(".claude-account-card .account-plan-badge").textContent;
+      await window.cam.__visualSmoke.changePlans(); window.dispatchEvent(new Event("focus")); await tick();
+      const updated = document.querySelector(".gpt-usage-card .account-plan-badge").textContent === "Pro 200" &&
+        document.querySelector(".claude-account-card .account-plan-badge").textContent === "Max 20x";
+      const antigravityUpdated = ${JSON.stringify(process.env.SMOKE_ANTIGRAVITY_SIGNED_OUT === "1")} || document.querySelector(".antigravity-card .account-plan-badge").textContent === "Google AI Ultra";
+      return { ...(await window.cam.__visualSmoke.stats()), updated, antigravityUpdated, logosLoaded, cleanClaudeHeaders, beforeClaude,
+        noSelectors: document.querySelectorAll(".account-plan-badge select, select.account-plan-badge").length === 0 };
     })()`);
     smoke.actions = actions;
     const expected = [
@@ -309,10 +321,19 @@ async function run() {
       ["antigravity", "vscode"],
       ["antigravity", "project"],
     ];
+    if (process.env.SMOKE_ANTIGRAVITY_SIGNED_OUT === "1")
+      expected.push(["antigravity", "signin"]);
     if (JSON.stringify(actions.launchCalls) !== JSON.stringify(expected))
       errors.push("card actions called the wrong launcher or Claude profile");
-    if (!actions.chosen || !actions.claudePlan.includes("Max 5x"))
-      errors.push("specific plan detection or selection failed");
+    if (
+      !actions.updated ||
+      !actions.antigravityUpdated ||
+      !actions.logosLoaded ||
+      !actions.cleanClaudeHeaders ||
+      !actions.noSelectors ||
+      !actions.beforeClaude.includes("Max 5x")
+    )
+      errors.push("automatic plan updates failed");
   }
   if (argument("scroll", "top") === "bottom") {
     await win.webContents.executeJavaScript(

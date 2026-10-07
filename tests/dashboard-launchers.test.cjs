@@ -42,12 +42,9 @@ test("account plans report exact known multipliers without inventing missing tie
     detect("codex", { planType: "pro", planTier: "20x" }),
     "Pro 20x",
   );
-  assert.equal(detect("codex", { planType: "pro" }), "Pro · tier unavailable");
-  assert.equal(
-    detect("claude", { subscriptionType: "max" }),
-    "Max · tier unavailable",
-  );
-  assert.equal(detect("codex", null), "Plan unavailable");
+  assert.equal(detect("codex", { planType: "pro" }), "Pro");
+  assert.equal(detect("claude", { subscriptionType: "max" }), "Max");
+  assert.equal(detect("codex", null), "Plan pending");
 });
 test("Claude project windows preserve isolated profile and folder as one argument", () => {
   const calls = [];
@@ -77,34 +74,4 @@ test("Claude project windows preserve isolated profile and folder as one argumen
     "--profile",
     "Claude Work",
   ]);
-});
-test("Antigravity chooses a native window or installed VS Code extension and handles missing installs", () => {
-  let native = null,
-    code = "C:\\Code.exe",
-    installed = true;
-  const calls = [];
-  const launch = vm.runInNewContext(
-    `(${functionSource(main, "launchAntigravity")})`,
-    {
-      antigravityExecutable: () => native,
-      vsCodeExecutable: () => code,
-      latestExtensionPackage: () => (installed ? "extension" : null),
-      buildVsCodeWindowArgs: require("../app/dist-electron/launcher-domain.cjs")
-        .buildVsCodeWindowArgs,
-      spawnDetachedExecutable: (...args) => calls.push(args),
-    },
-  );
-  assert.equal(launch().ok, true);
-  assert.equal(calls[0][0], code);
-  native = "C:\\Antigravity.exe";
-  assert.equal(launch().ok, true);
-  assert.equal(calls[1][0], native);
-  const folder = "C:\\Projects\\Spaces & Quotes'";
-  launch({ useVsCode: true, folder });
-  assert.deepEqual(calls[2][1], ["--new-window", folder]);
-  installed = false;
-  assert.equal(launch({ useVsCode: true }).ok, false);
-  code = null;
-  native = null;
-  assert.equal(launch().ok, false);
 });

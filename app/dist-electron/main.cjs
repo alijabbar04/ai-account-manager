@@ -30,6 +30,11 @@ var __toESM = (mod, isNodeMode, target) => (
   )
 );
 
+const { reconcileCodexAccountPlan } = require("./codex-plan-domain.cjs");
+const { ClaudePlanService } = require("./claude-plan-runtime.cjs");
+const claudePlans = new ClaudePlanService();
+const { createAntigravityRuntime } = require("./antigravity-runtime.cjs");
+const antigravity = createAntigravityRuntime({ spawnDetachedExecutable });
 // electron/main.ts
 var import_electron5 = require("electron");
 var path12 = __toESM(require("node:path"));
@@ -221,6 +226,7 @@ function readIdentity(configDir) {
   return {
     loggedIn,
     email: acct?.emailAddress,
+    accountUuid: acct?.accountUuid,
     displayName: acct?.displayName,
     orgName: acct?.organizationName,
     orgType: acct?.organizationType,
@@ -719,92 +725,21 @@ function launchVsCodeCodex(folder = null) {
     };
   }
 }
-function antigravityExecutable() {
-  const candidates = [
-    process.env.ANTIGRAVITY_PATH,
-    process.env.LOCALAPPDATA &&
-      path4.join(
-        process.env.LOCALAPPDATA,
-        "Programs",
-        "Antigravity",
-        "Antigravity.exe",
-      ),
-    process.env.LOCALAPPDATA &&
-      path4.join(
-        process.env.LOCALAPPDATA,
-        "Programs",
-        "Google",
-        "Antigravity",
-        "Antigravity.exe",
-      ),
-    process.env.ProgramFiles &&
-      path4.join(process.env.ProgramFiles, "Antigravity", "Antigravity.exe"),
-    process.env.ProgramFiles &&
-      path4.join(
-        process.env.ProgramFiles,
-        "Google",
-        "Antigravity",
-        "Antigravity.exe",
-      ),
-  ];
-  return (
-    candidates.find((candidate) => {
-      try {
-        return (
-          candidate &&
-          path4.isAbsolute(candidate) &&
-          fs4.statSync(candidate).isFile()
-        );
-      } catch {
-        return false;
-      }
-    }) ?? null
-  );
-}
-function antigravityStatus() {
-  const packageRoot = latestExtensionPackage("google.google-antigravity");
-  let version = null;
-  try {
-    version = JSON.parse(
-      fs4.readFileSync(path4.join(packageRoot, "package.json"), "utf8"),
-    ).version;
-  } catch {}
-  return {
-    nativeInstalled: Boolean(antigravityExecutable()),
-    extensionInstalled: Boolean(packageRoot),
-    extensionVersion: version,
-    account: null,
-    usageAvailable: false,
-    message:
-      "Live account and quota details are unavailable here. Check Model Quotas in Antigravity, or use /usage in its CLI.",
-  };
-}
-function launchAntigravity({ useVsCode = false, folder = null } = {}) {
-  const native = useVsCode ? null : antigravityExecutable();
-  const executable = native ?? vsCodeExecutable();
+function launchAntigravityVSCode(folder = null) {
+  const executable = vsCodeExecutable();
   if (!executable)
+    return { ok: false, error: "Visual Studio Code was not found." };
+  if (!latestExtensionPackage("google.google-antigravity"))
     return {
       ok: false,
       error:
-        "Install Antigravity or VS Code with the Google Antigravity extension, then try again.",
+        "Install the Google Antigravity extension in VS Code, then try again.",
     };
-  if (!native && !latestExtensionPackage("google.google-antigravity")) {
-    return {
-      ok: false,
-      error:
-        "The Google Antigravity extension (google.google-antigravity) is not installed in VS Code.",
-    };
-  }
   try {
     spawnDetachedExecutable(executable, buildVsCodeWindowArgs(folder));
-    return {
-      ok: true,
-      message: native
-        ? "Antigravity opened in a new window."
-        : "VS Code opened in a new window. Select the Antigravity icon to start a chat.",
-    };
-  } catch (err) {
-    return { ok: false, error: `Could not open Antigravity: ${err.message}` };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not open VS Code." };
   }
 }
 function vsCodeProfileName(profile) {
@@ -1562,7 +1497,8 @@ var UsageService = class {
   getCached(profileId) {
     return this.cache[profileId] ?? null;
   }
-  dropProfile(profileId) {
+  dropProfile(profileId, configDir) {
+    if (configDir) claudePlans.drop(configDir);
     delete this.cache[profileId];
     this.persist();
   }
@@ -1574,18 +1510,26 @@ var UsageService = class {
     if (!options.force && current && now - lastAttempt < USAGE_CACHE_FRESH_MS) {
       return current;
     }
-    return this.coordinator.run(profile.id, () => this.fetchUsage(profile));
+    return this.coordinator.run(profile.id, () =>
+      this.fetchUsage(profile, options),
+    );
   }
-  async fetchUsage(profile) {
+  async fetchUsage(profile, options = {}) {
     let snapshot;
     try {
       const token = await getValidAccessToken(profile.configDir);
-      const res = await fetch(USAGE_ENDPOINT, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "anthropic-beta": OAUTH_BETA_HEADER,
-        },
-      });
+      const [res] = await Promise.all([
+        fetch(USAGE_ENDPOINT, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "anthropic-beta": OAUTH_BETA_HEADER,
+          },
+        }),
+        claudePlans.refresh(profile.configDir, token, {
+          force: options.force,
+          accountUuid: readIdentity(profile.configDir).accountUuid,
+        }),
+      ]);
       if (!res.ok) {
         const relogin = res.status === 401 || res.status === 403;
         const previousFailures = this.cache[profile.id]?.failureCount ?? 0;
@@ -3273,7 +3217,10 @@ function readGptUsage() {
             ? { error: message.error.message ?? "Request failed." }
             : message.result;
           if (results[2] && results[3] && results[4]) {
-            const account = results[2]?.account ?? null;
+            const account = reconcileCodexAccountPlan(
+              results[2]?.account ?? null,
+              results[3]?.error ? null : results[3],
+            );
             const rateLimitsError = results[3]?.error;
             const usageError = results[4]?.error;
             if (!account) {
@@ -4423,7 +4370,10 @@ var Backend = class {
     const hiddenProfileIds = new Set(loadSettings().hiddenProfileIds);
     return Promise.all(
       profiles.map(async (profile) => {
-        const identity = readIdentity(profile.configDir);
+        const identity = claudePlans.attachIdentity(
+          profile.configDir,
+          readIdentity(profile.configDir),
+        );
         const activity = readActivity(profile.configDir);
         let usage = this.usage.getCached(profile.id);
         if (usage && !usage.ok && identity.loggedIn) {
@@ -4535,8 +4485,9 @@ var Backend = class {
     import_electron4.ipcMain.handle("profiles:remove", (_e, id, deleteDir) => {
       try {
         stopWatching(id);
+        const removedConfigDir = getProfile(id)?.configDir;
         removeProfile(id, deleteDir);
-        this.usage.dropProfile(id);
+        this.usage.dropProfile(id, removedConfigDir);
         const settings = loadSettings();
         saveSettings({
           hiddenProfileIds: settings.hiddenProfileIds.filter(
@@ -4665,12 +4616,16 @@ var Backend = class {
       }
     });
     import_electron4.ipcMain.handle("antigravity:status", () =>
-      antigravityStatus(),
+      antigravity.status(),
+    );
+    import_electron4.ipcMain.handle("antigravity:signIn", () =>
+      antigravity.signIn(),
     );
     import_electron4.ipcMain.handle("antigravity:launch", async (_e, kind) => {
       if (!["app", "vscode", "project"].includes(kind))
         return { ok: false, error: "Invalid Antigravity launch request." };
       try {
+        if (kind === "app") return await antigravity.launch();
         let folder = null;
         if (kind === "project") {
           const win = this.getWindow();
@@ -4689,7 +4644,7 @@ var Backend = class {
             }
           }).path;
         }
-        return launchAntigravity({ useVsCode: kind !== "app", folder });
+        return launchAntigravityVSCode(folder);
       } catch (err) {
         return { ok: false, error: err.message };
       }

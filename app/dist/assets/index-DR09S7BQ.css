@@ -2713,3 +2713,103 @@ kbd {
   background: color-mix(in srgb, #8b8cf8 12%, transparent);
   border: 1px solid color-mix(in srgb, #8b8cf8 30%, transparent);
 }
+
+/* Consistent account card headers and compact action spacing. */
+.provider-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.provider-card-identity {
+  flex: 1;
+  min-width: 0;
+}
+.provider-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.provider-title-line h2,
+.provider-title-line h3 {
+  font-size: 16px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.provider-account-email {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-brand {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 11px;
+}
+.provider-brand img {
+  width: 27px;
+  height: 27px;
+  filter: brightness(0) invert(1);
+}
+.claude-brand {
+  background: #d97856;
+  box-shadow: 0 4px 14px #d9785628;
+}
+.codex-brand {
+  background: #0d9e7c;
+  box-shadow: 0 4px 14px #0d9e7c28;
+}
+.antigravity-brand {
+  background: #6e73d8;
+  box-shadow: 0 4px 14px #6e73d828;
+}
+.account-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: none;
+  padding: 3px 9px;
+  cursor: default;
+}
+.codex-plan-badge {
+  color: #75e4c6;
+  background: color-mix(in srgb, #10a37f 13%, transparent);
+  border: 1px solid color-mix(in srgb, #10a37f 28%, transparent);
+}
+:root[data-theme="light"] .codex-plan-badge {
+  color: #0b7d63;
+}
+.gpt-usage-card,
+.claude-account-card,
+.antigravity-card {
+  gap: 16px;
+}
+.codex-launchers {
+  margin-top: 0;
+  padding-top: 12px;
+}
+.claude-account-card .card-actions,
+.antigravity-card .card-actions {
+  margin-top: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+.claude-account-card .menu-wrap {
+  margin-left: auto;
+}
+
+.account-empty-state {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+:root[data-theme="light"] .antigravity-plan-badge {
+  color: #555ab6;
+}
