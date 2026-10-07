@@ -13585,7 +13585,6 @@ function Jo({
   state: f,
   now: o,
   onLaunch: v,
-  onSetDefault: d,
   onRename: x,
   onRemove: E,
   onReveal: D,
@@ -13597,7 +13596,7 @@ function Jo({
     [openingClaude, setOpeningClaude] = q.useState(false),
     [claudeLaunchError, setClaudeLaunchError] = q.useState(null),
     B = q.useRef(null),
-    { profile: R, identity: _, usage: Y, activity: U, isDefault: H } = f,
+    { profile: R, identity: _, usage: Y, activity: U } = f,
     N = Gv(f);
   q.useEffect(() => {
     if (!C) return;
@@ -13791,14 +13790,6 @@ function Jo({
                     title:
                       "Choose a folder and open it with this Claude Code profile",
                     children: "Open VS Code project…",
-                  }),
-                  i.jsx("button", {
-                    className: "btn",
-                    "data-active": H || void 0,
-                    onClick: () => d(!H),
-                    title:
-                      "Make this account the default CLAUDE_CONFIG_DIR for all new shells",
-                    children: H ? "★ Default" : "☆ Set Default",
                   }),
                 ],
               }),

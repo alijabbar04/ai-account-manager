@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.5] — 2026-10-07
+
+### Changed
+
+- Remove the Set Default/Default action from Claude account cards.
+
 ## [1.7.4] — 2026-10-07
 
 ### Changed
