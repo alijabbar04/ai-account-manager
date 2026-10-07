@@ -12601,6 +12601,8 @@ function Hv({
   accountCount: x,
   themePref: E,
   onCycleTheme: D,
+  collapsed,
+  onToggle,
 }) {
   const w = (g) => (d ?? []).filter((B) => B.record.provider === g).length,
     C = (g) => {
@@ -12630,6 +12632,14 @@ function Hv({
           i.jsx("span", {
             className: "sidebar-title",
             children: "AI Account Manager",
+          }),
+          i.jsx("button", {
+            className: "btn btn-icon sidebar-toggle",
+            onClick: onToggle,
+            title: collapsed ? "Expand sidebar" : "Collapse sidebar",
+            "aria-label": collapsed ? "Expand sidebar" : "Collapse sidebar",
+            "aria-expanded": !collapsed,
+            children: collapsed ? "»" : "«",
           }),
         ],
       }),
@@ -12753,6 +12763,8 @@ function Zt({
   status: D,
 }) {
   return i.jsxs("button", {
+    title: x,
+    "aria-label": x,
     className: "nav-item",
     "data-active": f || void 0,
     onClick: o,
@@ -13484,7 +13496,7 @@ function VisibilityUndo({ item: f, onUndo: o }) {
     })
   );
 }
-function GlobalLaunchers() {
+function CodexLaunchers() {
   const [f, o] = q.useState(null),
     [v, d] = q.useState(null),
     x = async (E, D, w) => {
@@ -13502,39 +13514,19 @@ function GlobalLaunchers() {
                 helpTarget: C.helpTarget,
               },
         );
+      } catch (error) {
+        o({ ok: false, message: error.message ?? "Could not open the app." });
       } finally {
         d(null);
       }
     };
   return i.jsxs("section", {
-    className: "global-launchers",
-    "aria-label": "New chat launchers",
+    className: "codex-launchers",
+    "aria-label": "Codex launchers",
     children: [
-      i.jsxs("div", {
-        className: "global-launchers-copy",
-        children: [
-          i.jsx("strong", { children: "Start something new" }),
-          i.jsx("span", {
-            children:
-              "Claude Cowork uses the account currently active in Claude Desktop. Codex app chats use the account active in Codex; managed Claude Code profiles cannot be applied to either app.",
-          }),
-        ],
-      }),
       i.jsxs("div", {
         className: "global-launcher-actions",
         children: [
-          i.jsx("button", {
-            className: "btn btn-primary",
-            disabled: v !== null,
-            title: "Uses the account currently active in Claude Desktop",
-            onClick: () =>
-              x(
-                "cowork",
-                () => window.cam.launchers.claudeCowork(),
-                "Claude Cowork opened.",
-              ),
-            children: v === "cowork" ? "Opening…" : "New Claude Cowork",
-          }),
           i.jsx("button", {
             className: "btn",
             disabled: v !== null,
@@ -13566,7 +13558,7 @@ function GlobalLaunchers() {
                 () => window.cam.launchers.vscodeProject(),
                 "Project opened in a new VS Code window.",
               ),
-            children: v === "project" ? "Choosing…" : "VS Code project…",
+            children: v === "project" ? "Choosing…" : "Open VS Code project…",
           }),
         ],
       }),
@@ -13623,7 +13615,7 @@ function Jo({
           ? "Personal"
           : null;
   return i.jsxs("article", {
-    className: "card",
+    className: "card claude-account-card",
     "data-status": N.kind,
     children: [
       i.jsxs("header", {
@@ -13644,6 +13636,11 @@ function Jo({
               className: "badge badge-default",
               children: "Default",
             }),
+          i.jsx(AccountPlanBadge, {
+            provider: "claude",
+            account: _,
+            accountId: R.id,
+          }),
           roleLabel &&
             i.jsx("span", {
               className: "badge",
@@ -13786,6 +13783,13 @@ function Jo({
                   }),
                   i.jsx("button", {
                     className: "btn",
+                    onClick: () => v("project"),
+                    title:
+                      "Choose a folder and open it with this Claude Code profile",
+                    children: "Open VS Code project…",
+                  }),
+                  i.jsx("button", {
+                    className: "btn",
                     "data-active": H || void 0,
                     onClick: () => d(!H),
                     title:
@@ -13816,6 +13820,13 @@ function Jo({
                     className: "btn",
                     onClick: () => v("vscode"),
                     children: "Open in VS Code",
+                  }),
+                  i.jsx("button", {
+                    className: "btn",
+                    onClick: () => v("project"),
+                    title:
+                      "Choose a folder and open it with this Claude Code profile",
+                    children: "Open VS Code project…",
                   }),
                 ],
               }),
@@ -14117,12 +14128,100 @@ function Wo({ state: f, onClose: o, onDone: v }) {
     ],
   });
 }
-function formatGptPlan(f) {
-  return f
-    ? String(f)
-        .replace(/[_-]+/g, " ")
-        .replace(/\b\w/g, (o) => o.toUpperCase())
-    : "ChatGPT";
+function detectedAccountPlan(provider, account) {
+  const raw = String(
+    provider === "claude"
+      ? (account?.subscriptionType ??
+          account?.billingType ??
+          account?.orgType ??
+          "")
+      : (account?.planType ?? ""),
+  ).toLowerCase();
+  const tier = String(
+    account?.rateLimitTier ?? account?.seatTier ?? account?.planTier ?? "",
+  ).toLowerCase();
+  const combined = `${raw} ${tier}`;
+  const multiplier = /(?:^|[^0-9])20x(?:$|[^a-z0-9])/.test(combined)
+    ? "20x"
+    : /(?:^|[^0-9])5x(?:$|[^a-z0-9])/.test(combined)
+      ? "5x"
+      : null;
+  if (/max/.test(combined))
+    return multiplier ? `Max ${multiplier}` : "Max · tier unavailable";
+  if (/pro/.test(raw))
+    return provider === "codex"
+      ? multiplier
+        ? `Pro ${multiplier}`
+        : "Pro · tier unavailable"
+      : "Pro";
+  const names = {
+    plus: "Plus",
+    free: "Free",
+    team: "Team",
+    business: "Business",
+    enterprise: "Enterprise",
+    edu: "Edu",
+  };
+  return (
+    names[raw] ??
+    (raw
+      ? raw
+          .replace(/[_-]+/g, " ")
+          .replace(/\b\w/g, (value) => value.toUpperCase())
+      : "Plan unavailable")
+  );
+}
+function AccountPlanBadge({ provider, account, accountId }) {
+  const key = `aam-plan:${provider}:${accountId ?? account?.email ?? "signed-in"}`;
+  const [override, setOverride] = q.useState(() => {
+    try {
+      return localStorage.getItem(key) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  q.useEffect(() => {
+    try {
+      setOverride(localStorage.getItem(key) ?? "");
+    } catch {
+      setOverride("");
+    }
+  }, [key]);
+  const detected = detectedAccountPlan(provider, account);
+  const choices =
+    provider === "claude"
+      ? ["Free", "Pro", "Max 5x", "Max 20x", "Team", "Enterprise"]
+      : provider === "antigravity"
+        ? ["Free", "Google AI Pro", "Google AI Ultra", "Enterprise"]
+        : [
+            "Free",
+            "Plus",
+            "Pro 5x",
+            "Pro 20x",
+            "Business",
+            "Enterprise",
+            "Edu",
+          ];
+  return i.jsxs("select", {
+    className: `account-plan-badge ${provider === "codex" ? "gpt-plan-badge" : "claude-plan-badge"}`,
+    "aria-label": `${provider === "claude" ? "Claude" : provider === "antigravity" ? "Antigravity" : "Codex"} plan`,
+    title:
+      "Auto uses account data. Choose your plan if the service does not report the exact tier.",
+    value: choices.includes(override) ? override : "",
+    onChange: (event) => {
+      const value = event.target.value;
+      setOverride(value);
+      try {
+        value ? localStorage.setItem(key, value) : localStorage.removeItem(key);
+      } catch {}
+    },
+    children: [
+      i.jsx("option", { value: "", children: `${detected} (auto)` }),
+      ...choices.map((value) =>
+        i.jsx("option", { value, children: value }, value),
+      ),
+    ],
+  });
 }
 function formatGptTokens(f) {
   return f === null || f === void 0 || !Number.isFinite(Number(f))
@@ -14232,11 +14331,7 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
                 className: "gpt-card-title-line",
                 children: [
                   i.jsx("h2", { children: "GPT / Codex usage" }),
-                  D?.planType &&
-                    i.jsx("span", {
-                      className: "gpt-plan-badge",
-                      children: formatGptPlan(D.planType),
-                    }),
+                  i.jsx(AccountPlanBadge, { provider: "codex", account: D }),
                 ],
               }),
               i.jsx("div", {
@@ -14307,6 +14402,123 @@ function GptUsageCard({ usage: f, now: o, refreshing: v, onRefresh: d }) {
                 }),
               ],
             }),
+      i.jsx(CodexLaunchers, {}),
+    ],
+  });
+}
+function AntigravityCard() {
+  const [status, setStatus] = q.useState(null);
+  const [pending, setPending] = q.useState(null);
+  const [result, setResult] = q.useState(null);
+  const refresh = async () => {
+    try {
+      setStatus(await window.cam.antigravity.status());
+    } catch (error) {
+      setStatus({
+        message: error.message ?? "Antigravity status unavailable.",
+      });
+    }
+  };
+  q.useEffect(() => {
+    refresh();
+  }, []);
+  const launch = async (kind) => {
+    setPending(kind);
+    setResult(null);
+    try {
+      const value = await window.cam.antigravity.launch(kind);
+      if (!value.cancelled) setResult(value);
+    } catch (error) {
+      setResult({
+        ok: false,
+        error: error.message ?? "Could not open Antigravity.",
+      });
+    } finally {
+      setPending(null);
+    }
+  };
+  return i.jsxs("section", {
+    className: "card antigravity-card",
+    "aria-label": "Antigravity account and launchers",
+    children: [
+      i.jsxs("div", {
+        className: "gpt-card-head",
+        children: [
+          i.jsx("div", {
+            className: "gpt-brand-mark antigravity-brand-mark",
+            children: "AG",
+          }),
+          i.jsxs("div", {
+            className: "gpt-card-title-wrap",
+            children: [
+              i.jsxs("div", {
+                className: "gpt-card-title-line",
+                children: [
+                  i.jsx("h2", { children: "Antigravity" }),
+                  i.jsx(AccountPlanBadge, {
+                    provider: "antigravity",
+                    account: status?.account,
+                  }),
+                ],
+              }),
+              i.jsx("div", {
+                className: "gpt-account-line",
+                children: status
+                  ? status.nativeInstalled
+                    ? "Antigravity app installed"
+                    : status.extensionInstalled
+                      ? `VS Code extension ${status.extensionVersion ?? ""} installed`
+                      : "Antigravity installation not detected"
+                  : "Checking Antigravity…",
+              }),
+            ],
+          }),
+          i.jsx("button", {
+            className: "btn btn-small",
+            onClick: refresh,
+            children: "↻ Refresh",
+          }),
+        ],
+      }),
+      i.jsx("div", {
+        className: "gpt-empty-limits",
+        children: status?.message ?? "Loading Antigravity status…",
+      }),
+      i.jsxs("footer", {
+        className: "card-actions",
+        children: [
+          ...[
+            ["app", "Open Antigravity"],
+            ["vscode", "Open in VS Code"],
+            ["project", "Open VS Code project…"],
+          ].map(([kind, label]) =>
+            i.jsx(
+              "button",
+              {
+                className: "btn",
+                disabled: pending !== null,
+                onClick: () => launch(kind),
+                children: pending === kind ? "Opening…" : label,
+              },
+              kind,
+            ),
+          ),
+          i.jsx("a", {
+            className: "btn",
+            href: "https://antigravity.google/docs/cli/commands/usage",
+            target: "_blank",
+            rel: "noreferrer",
+            children: "Usage guide ↗",
+          }),
+        ],
+      }),
+      result &&
+        i.jsx("div", {
+          className: "banner launcher-result",
+          "data-kind": result.ok ? "ok" : "warn",
+          role: "status",
+          children: result.message ?? result.error,
+        }),
     ],
   });
 }
@@ -14886,7 +15098,9 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
       const result =
         kind === "login"
           ? await window.cam.login(id)
-          : await window.cam.launchVSCode(id);
+          : kind === "project"
+            ? await window.cam.launchVSCodeProject(id)
+            : await window.cam.launchVSCode(id);
       !result.ok && result.error && o(result.error);
     },
     setDefault = async (id, enabled) => {
@@ -15027,23 +15241,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
                   i.jsxs("div", {
                     className: "claude-dashboard-grid",
                     children: [
-                      work
-                        ? renderCard(work, "work")
-                        : i.jsxs("section", {
-                            className: "empty compact-empty",
-                            children: [
-                              i.jsx("h2", { children: "Work Claude" }),
-                              i.jsx("p", {
-                                children:
-                                  "No visible work/default Claude Code profile is assigned.",
-                              }),
-                              i.jsx("button", {
-                                className: "btn",
-                                onClick: v,
-                                children: "Choose an account",
-                              }),
-                            ],
-                          }),
+                      work && renderCard(work, "work"),
                       personal
                         ? renderCard(personal, "personal")
                         : i.jsxs("section", {
@@ -15071,7 +15269,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
         refreshing: gptRefreshing,
         onRefresh: refreshGptOnly,
       }),
-      i.jsx(GlobalLaunchers, {}),
+      i.jsx(AntigravityCard, {}),
       E?.type === "rename" &&
         i.jsx($o, {
           state: E.state,
@@ -15159,7 +15357,9 @@ function kv({ now: f, showToast: o, onGoSettings }) {
       const nl =
         N === "login"
           ? await window.cam.login(K)
-          : await window.cam.launchVSCode(K);
+          : N === "project"
+            ? await window.cam.launchVSCodeProject(K)
+            : await window.cam.launchVSCode(K);
       !nl.ok && nl.error && o(nl.error);
     },
     _ = async (N, K) => {
@@ -19237,8 +19437,24 @@ function hy() {
     },
     al = (P) => o(`provider:${P}`),
     W = ry(f);
+  const [sidebarCollapsed, setSidebarCollapsed] = q.useState(() => {
+    try {
+      return localStorage.getItem("aam-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () =>
+    setSidebarCollapsed((value) => {
+      const next = !value;
+      try {
+        localStorage.setItem("aam-sidebar-collapsed", String(next));
+      } catch {}
+      return next;
+    });
   return i.jsxs("div", {
     className: "app-shell",
+    "data-sidebar-collapsed": sidebarCollapsed,
     children: [
       i.jsx(Hv, {
         view: f,
@@ -19248,6 +19464,8 @@ function hy() {
         accountCount: U,
         themePref: v,
         onCycleTheme: k,
+        collapsed: sidebarCollapsed,
+        onToggle: toggleSidebar,
       }),
       i.jsxs("main", {
         className: "main-scroll",

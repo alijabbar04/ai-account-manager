@@ -87,6 +87,9 @@ const renderer = fs.readFileSync(files.renderer, "utf8");
 
 for (const channel of [
   "account/usage/read",
+  "profiles:launchVSCodeProject",
+  "antigravity:status",
+  "antigravity:launch",
   "claude:history",
   "alerts:get",
   "alerts:set",
@@ -143,7 +146,13 @@ for (const feature of [
   "Session launcher",
   "Redacted activity history",
   "Provider capability matrix",
-  "New Claude Cowork",
+  "Open VS Code project…",
+  "Open Antigravity",
+  "Collapse sidebar",
+  "Pro 5x",
+  "Pro 20x",
+  "Max 5x",
+  "Max 20x",
   "New Codex chat",
   "New VS Code Codex",
   "Profile visibility",
@@ -182,9 +191,11 @@ const dashboardEnd = renderer.indexOf("function Ku(", dashboardStart);
 const dashboardRenderer = renderer.slice(dashboardStart, dashboardEnd);
 assert.ok(
   dashboardStart >= 0 &&
-    dashboardRenderer.indexOf("i.jsx(GptUsageCard") <
-      dashboardRenderer.indexOf("i.jsx(GlobalLaunchers"),
-  "Global launchers must render after GPT / Codex usage",
+    dashboardRenderer.includes("i.jsx(GptUsageCard") &&
+    !renderer.includes("Start something new") &&
+    !renderer.includes("Choose an account") &&
+    renderer.includes("i.jsx(CodexLaunchers"),
+  "Dashboard launchers must live in the Codex card; removed placeholders must stay removed",
 );
 assert.ok(
   main.includes("otherAccountsLayout: normalizeOtherAccountsLayout") &&

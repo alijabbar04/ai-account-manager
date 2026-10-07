@@ -87,7 +87,8 @@ async function run() {
     const workCard = cards.find((card) => card.innerText.includes("Work Example"));
     const personalCard = cards.find((card) => card.innerText.includes("Personal Example"));
     const gptCard = document.querySelector(".gpt-usage-card");
-    const launchers = document.querySelector(".global-launchers");
+    const launchers = gptCard?.querySelector(".codex-launchers");
+    const antigravity = document.querySelector(".antigravity-card");
     const dashboardGrid = document.querySelector(".claude-dashboard-grid");
     const otherGrid = document.querySelector(".other-accounts-grid");
     const otherCards = otherGrid ? [...otherGrid.querySelectorAll(":scope > .card")] : [];
@@ -109,6 +110,7 @@ async function run() {
         color: getComputedStyle(button).color,
       })),
       dashboard: {
+        antigravity: rect(antigravity),
         work: rect(workCard),
         personal: rect(personalCard),
         grid: rect(dashboardGrid),
@@ -119,10 +121,8 @@ async function run() {
           workCard &&
           personalCard &&
           gptCard &&
-          launchers &&
           workCard.compareDocumentPosition(personalCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
-          personalCard.compareDocumentPosition(gptCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
-          gptCard.compareDocumentPosition(launchers) & Node.DOCUMENT_POSITION_FOLLOWING
+          personalCard.compareDocumentPosition(gptCard) & Node.DOCUMENT_POSITION_FOLLOWING
         ),
       },
       accounts: {
@@ -144,10 +144,17 @@ async function run() {
       if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
     }
   } else if (view.startsWith("dashboard")) {
-    for (const value of ["New Claude Cowork", "GPT / Codex usage"]) {
+    for (const value of [
+      "New Codex chat",
+      "New VS Code Codex",
+      "Open VS Code project…",
+      "GPT / Codex usage",
+    ]) {
       if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
     }
     for (const removed of [
+      "Start something new",
+      "Choose an account",
       "Lifetime tokens",
       "Peak day",
       "Current streak",
@@ -157,9 +164,18 @@ async function run() {
         errors.push(`stale GPT statistic ${removed}`);
     }
     const dashboard = smoke.dashboard;
+    if (
+      !dashboard.antigravity ||
+      dashboard.antigravity.top < dashboard.gpt.bottom
+    )
+      errors.push("Antigravity must appear below Codex");
     if (dashboard.gptMeters < 2) errors.push("GPT rolling meters are missing");
-    if (dashboard.launchers?.top < dashboard.gpt?.bottom) {
-      errors.push("global launchers do not follow GPT usage");
+    if (
+      !dashboard.launchers ||
+      dashboard.launchers.top < dashboard.gpt.top ||
+      dashboard.launchers.bottom > dashboard.gpt.bottom
+    ) {
+      errors.push("Codex launchers are not contained in the Codex card");
     }
     if (view === "dashboard") {
       for (const value of ["Work Example", "Personal Example"]) {
@@ -239,6 +255,69 @@ async function run() {
         `${selectedLabel} layout does not have visible selected state`,
       );
     }
+  }
+  // Exercise the rail and its persistence, then restore the requested state.
+  const sidebarCheck = await win.webContents.executeJavaScript(`(async () => {
+    const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const expandedWidth = document.querySelector(".sidebar").getBoundingClientRect().width;
+    document.querySelector(".sidebar-toggle").click();
+    await frame();
+    const collapsedWidth = document.querySelector(".sidebar").getBoundingClientRect().width;
+    const persisted = localStorage.getItem("aam-sidebar-collapsed") === "true";
+    const labelled = [...document.querySelectorAll(".nav-item")].every(button => button.getAttribute("aria-label"));
+    if (${JSON.stringify(argument("collapsed", "false"))} !== "true") {
+      document.querySelector(".sidebar-toggle").click();
+      await frame();
+    }
+    return { expandedWidth, collapsedWidth, persisted, labelled };
+  })()`);
+  smoke.sidebarCheck = sidebarCheck;
+  if (
+    sidebarCheck.collapsedWidth >= sidebarCheck.expandedWidth ||
+    !sidebarCheck.persisted ||
+    !sidebarCheck.labelled
+  ) {
+    errors.push("sidebar collapse or accessible navigation failed");
+  }
+  if (view === "dashboard") {
+    const actions = await win.webContents.executeJavaScript(`(async () => {
+      const tick = () => new Promise(resolve => setTimeout(resolve, 50));
+      const click = (scope, label) => [...document.querySelectorAll(scope + " button")].find(button => button.textContent === label)?.click();
+      click(".claude-account-card", "Open in VS Code"); await tick();
+      click(".claude-account-card", "Open VS Code project…"); await tick();
+      click(".gpt-usage-card", "New Codex chat"); await tick();
+      click(".gpt-usage-card", "New VS Code Codex"); await tick();
+      click(".gpt-usage-card", "Open VS Code project…"); await tick();
+      click(".antigravity-card", "Open Antigravity"); await tick();
+      click(".antigravity-card", "Open in VS Code"); await tick();
+      click(".antigravity-card", "Open VS Code project…"); await tick();
+      const plan = document.querySelector(".gpt-usage-card select");
+      plan.value = "Pro 20x"; plan.dispatchEvent(new Event("change", { bubbles: true })); await tick();
+      const chosen = plan.value === "Pro 20x" && localStorage.getItem("aam-plan:codex:codex@example.test") === "Pro 20x";
+      plan.value = ""; plan.dispatchEvent(new Event("change", { bubbles: true })); await tick();
+      return { ...(await window.cam.__visualSmoke.stats()), chosen,
+        claudePlan: document.querySelector(".claude-account-card select option").textContent };
+    })()`);
+    smoke.actions = actions;
+    const expected = [
+      ["claude-window", "work-smoke"],
+      ["claude-project", "work-smoke"],
+      ["codex-chat"],
+      ["codex-window"],
+      ["codex-project"],
+      ["antigravity", "app"],
+      ["antigravity", "vscode"],
+      ["antigravity", "project"],
+    ];
+    if (JSON.stringify(actions.launchCalls) !== JSON.stringify(expected))
+      errors.push("card actions called the wrong launcher or Claude profile");
+    if (!actions.chosen || !actions.claudePlan.includes("Max 5x"))
+      errors.push("specific plan detection or selection failed");
+  }
+  if (argument("scroll", "top") === "bottom") {
+    await win.webContents.executeJavaScript(
+      "document.querySelector('.main-scroll').scrollTop = document.querySelector('.main-scroll').scrollHeight",
+    );
   }
   if (errors.length) {
     throw new Error(`Visual smoke failed: ${errors.join("; ")}`);

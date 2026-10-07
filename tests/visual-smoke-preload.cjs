@@ -20,7 +20,12 @@ const states = noProfiles
           name: "Work Example",
           configDir: "C:\\Smoke Test\\Work & Research",
         },
-        identity: { loggedIn: true, email: "work@example.test" },
+        identity: {
+          loggedIn: true,
+          email: "work@example.test",
+          subscriptionType: "max",
+          rateLimitTier: "default_claude_max_5x",
+        },
         usage: {
           ok: true,
           fetchedAt: now,
@@ -50,7 +55,11 @@ const states = noProfiles
           name: "Personal Example",
           configDir: "C:\\Smoke Test\\Personal's Profile",
         },
-        identity: { loggedIn: true, email: "personal@example.test" },
+        identity: {
+          loggedIn: true,
+          email: "personal@example.test",
+          subscriptionType: "pro",
+        },
         usage: {
           ok: true,
           fetchedAt: now,
@@ -124,6 +133,7 @@ const gptUsage = {
 
 let otherAccountsLayout =
   process.env.SMOKE_SAVED_LAYOUT === "wide" ? "wide" : "grid";
+const launchCalls = [];
 let listStatesCalls = 0;
 let layoutSetCalls = 0;
 
@@ -140,10 +150,33 @@ contextBridge.exposeInMainWorld("cam", {
   onGptUsageChanged: noopSubscription,
   getTheme: async () => process.env.SMOKE_THEME ?? "dark",
   setTheme: async () => undefined,
-  launchVSCode: async () => ({ ok: true }),
+  launchVSCode: async (id) => {
+    launchCalls.push(["claude-window", id]);
+    return { ok: true };
+  },
+  launchVSCodeProject: async (id) => {
+    launchCalls.push(["claude-project", id]);
+    return { ok: true, cancelled: true };
+  },
   login: async () => ({ ok: true }),
   setDefault: async () => ({ ok: true }),
   revealFolder: async () => undefined,
+  antigravity: {
+    status: async () => ({
+      extensionInstalled: true,
+      extensionVersion: "1.7.0",
+      usageAvailable: false,
+      message: "Live quota unavailable. Check Model Quotas in Antigravity.",
+    }),
+    launch: async (kind) => {
+      launchCalls.push(["antigravity", kind]);
+      return {
+        ok: true,
+        cancelled: kind === "project",
+        message: "Antigravity opened.",
+      };
+    },
+  },
   visibility: {
     setHidden: async () => ({ ok: true }),
     showAll: async () => ({ ok: true }),
@@ -160,13 +193,22 @@ contextBridge.exposeInMainWorld("cam", {
     },
   },
   __visualSmoke: {
-    stats: async () => ({ listStatesCalls, layoutSetCalls }),
+    stats: async () => ({ listStatesCalls, layoutSetCalls, launchCalls }),
   },
   launchers: {
     claudeCowork: async () => ({ ok: true }),
-    codexChat: async () => ({ ok: true }),
-    vscodeCodex: async () => ({ ok: true, message: "VS Code opened." }),
-    vscodeProject: async () => ({ ok: true, cancelled: true }),
+    codexChat: async () => {
+      launchCalls.push(["codex-chat"]);
+      return { ok: true };
+    },
+    vscodeCodex: async () => {
+      launchCalls.push(["codex-window"]);
+      return { ok: true, message: "VS Code opened." };
+    },
+    vscodeProject: async () => {
+      launchCalls.push(["codex-project"]);
+      return { ok: true, cancelled: true };
+    },
     openHelp: async () => ({ ok: true }),
   },
   apiKeys: {

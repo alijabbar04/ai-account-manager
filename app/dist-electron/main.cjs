@@ -719,6 +719,94 @@ function launchVsCodeCodex(folder = null) {
     };
   }
 }
+function antigravityExecutable() {
+  const candidates = [
+    process.env.ANTIGRAVITY_PATH,
+    process.env.LOCALAPPDATA &&
+      path4.join(
+        process.env.LOCALAPPDATA,
+        "Programs",
+        "Antigravity",
+        "Antigravity.exe",
+      ),
+    process.env.LOCALAPPDATA &&
+      path4.join(
+        process.env.LOCALAPPDATA,
+        "Programs",
+        "Google",
+        "Antigravity",
+        "Antigravity.exe",
+      ),
+    process.env.ProgramFiles &&
+      path4.join(process.env.ProgramFiles, "Antigravity", "Antigravity.exe"),
+    process.env.ProgramFiles &&
+      path4.join(
+        process.env.ProgramFiles,
+        "Google",
+        "Antigravity",
+        "Antigravity.exe",
+      ),
+  ];
+  return (
+    candidates.find((candidate) => {
+      try {
+        return (
+          candidate &&
+          path4.isAbsolute(candidate) &&
+          fs4.statSync(candidate).isFile()
+        );
+      } catch {
+        return false;
+      }
+    }) ?? null
+  );
+}
+function antigravityStatus() {
+  const packageRoot = latestExtensionPackage("google.google-antigravity");
+  let version = null;
+  try {
+    version = JSON.parse(
+      fs4.readFileSync(path4.join(packageRoot, "package.json"), "utf8"),
+    ).version;
+  } catch {}
+  return {
+    nativeInstalled: Boolean(antigravityExecutable()),
+    extensionInstalled: Boolean(packageRoot),
+    extensionVersion: version,
+    account: null,
+    usageAvailable: false,
+    message:
+      "Live account and quota details are unavailable here. Check Model Quotas in Antigravity, or use /usage in its CLI.",
+  };
+}
+function launchAntigravity({ useVsCode = false, folder = null } = {}) {
+  const native = useVsCode ? null : antigravityExecutable();
+  const executable = native ?? vsCodeExecutable();
+  if (!executable)
+    return {
+      ok: false,
+      error:
+        "Install Antigravity or VS Code with the Google Antigravity extension, then try again.",
+    };
+  if (!native && !latestExtensionPackage("google.google-antigravity")) {
+    return {
+      ok: false,
+      error:
+        "The Google Antigravity extension (google.google-antigravity) is not installed in VS Code.",
+    };
+  }
+  try {
+    spawnDetachedExecutable(executable, buildVsCodeWindowArgs(folder));
+    return {
+      ok: true,
+      message: native
+        ? "Antigravity opened in a new window."
+        : "VS Code opened in a new window. Select the Antigravity icon to start a chat.",
+    };
+  } catch (err) {
+    return { ok: false, error: `Could not open Antigravity: ${err.message}` };
+  }
+}
 function vsCodeProfileName(profile) {
   const label =
     profile.dashboardRole === "work"
@@ -899,7 +987,7 @@ function openLoginTerminal(profile) {
     `Write-Host 'Complete the sign-in in your browser (Anthropic or Google).' -ForegroundColor Yellow; & ${psSingleQuote2(claudeCli)} auth login`,
   );
 }
-function openVSCode(profile) {
+function openVSCode(profile, folder = null) {
   const executable = vsCodeExecutable();
   if (!executable) {
     return { ok: false, error: "The VS Code executable was not found." };
@@ -913,7 +1001,7 @@ function openVSCode(profile) {
   try {
     spawnDetachedExecutable(
       executable,
-      ["--new-window", "--profile", profileName],
+      ["--new-window", "--profile", profileName, ...(folder ? [folder] : [])],
       {
         env: envFor(profile),
       },
@@ -4500,6 +4588,36 @@ var Backend = class {
         }
       },
     );
+    import_electron4.ipcMain.handle(
+      "profiles:launchVSCodeProject",
+      async (_e, profileId) => {
+        const profile = getProfile(profileId);
+        if (!profile) return { ok: false, error: "Account not found." };
+        const win = this.getWindow();
+        if (!win) return { ok: false, error: "No window is available." };
+        try {
+          const { canceled, filePaths } =
+            await import_electron4.dialog.showOpenDialog(win, {
+              title: `Choose a project for Claude — ${profile.name}`,
+              properties: ["openDirectory"],
+            });
+          if (canceled || !filePaths[0]) return { ok: true, cancelled: true };
+          const selected = validateProjectDirectory(
+            filePaths[0],
+            (candidate) => {
+              try {
+                return fs11.statSync(candidate).isDirectory();
+              } catch {
+                return false;
+              }
+            },
+          );
+          return openVSCode(profile, selected.path);
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
     import_electron4.ipcMain.handle("profiles:login", (_e, profileId) => {
       const profile = getProfile(profileId);
       if (!profile) return { ok: false, error: "Account not found." };
@@ -4542,6 +4660,36 @@ var Backend = class {
           }
         });
         return launchVsCodeCodex(selected.path);
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    });
+    import_electron4.ipcMain.handle("antigravity:status", () =>
+      antigravityStatus(),
+    );
+    import_electron4.ipcMain.handle("antigravity:launch", async (_e, kind) => {
+      if (!["app", "vscode", "project"].includes(kind))
+        return { ok: false, error: "Invalid Antigravity launch request." };
+      try {
+        let folder = null;
+        if (kind === "project") {
+          const win = this.getWindow();
+          if (!win) return { ok: false, error: "No window is available." };
+          const { canceled, filePaths } =
+            await import_electron4.dialog.showOpenDialog(win, {
+              title: "Choose a project for VS Code Antigravity",
+              properties: ["openDirectory"],
+            });
+          if (canceled || !filePaths[0]) return { ok: true, cancelled: true };
+          folder = validateProjectDirectory(filePaths[0], (candidate) => {
+            try {
+              return fs11.statSync(candidate).isDirectory();
+            } catch {
+              return false;
+            }
+          }).path;
+        }
+        return launchAntigravity({ useVsCode: kind !== "app", folder });
       } catch (err) {
         return { ok: false, error: err.message };
       }

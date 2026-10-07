@@ -33,6 +33,11 @@ var api = {
   },
   launchVSCode: (profileId) =>
     import_electron.ipcRenderer.invoke("profiles:launchVSCode", profileId),
+  launchVSCodeProject: (profileId) =>
+    import_electron.ipcRenderer.invoke(
+      "profiles:launchVSCodeProject",
+      profileId,
+    ),
   login: (profileId) =>
     import_electron.ipcRenderer.invoke("profiles:login", profileId),
   launchers: {
@@ -45,6 +50,11 @@ var api = {
       import_electron.ipcRenderer.invoke("launchers:vscodeProject"),
     openHelp: (target) =>
       import_electron.ipcRenderer.invoke("launchers:help", target),
+  },
+  antigravity: {
+    status: () => import_electron.ipcRenderer.invoke("antigravity:status"),
+    launch: (kind) =>
+      import_electron.ipcRenderer.invoke("antigravity:launch", kind),
   },
   visibility: {
     get: () => import_electron.ipcRenderer.invoke("profiles:visibility:get"),

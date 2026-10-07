@@ -7,6 +7,18 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.2] — 2026-10-07
+
+### Changed
+
+- Add an Antigravity card below Codex with installation status, plan selection, new app/VS Code windows, a project folder picker, and a usage guide. Live Antigravity quotas are explicitly marked unavailable.
+
+- Collapse or expand the sidebar; the choice persists across restarts and icon navigation retains accessible labels.
+- Place new Codex chat, VS Code Codex, and folder-picker project actions at the bottom of the Codex usage card.
+- Add a folder-picker VS Code project action to each Claude card, retaining its isolated Claude profile and account environment.
+- Give Claude cards a soft orange glow and display account plans, including Max 5x/20x and Pro 5x/20x when supplied. A plan selector lets users specify a tier the service does not report.
+- Remove the dashboard's separate launch section and empty Work Claude account chooser.
+
 ## [1.7.1] — unreleased
 
 ### Fixed

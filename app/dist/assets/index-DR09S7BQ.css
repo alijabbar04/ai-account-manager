@@ -2616,3 +2616,100 @@ kbd {
     width: 100%;
   }
 }
+
+/* Compact navigation keeps all destinations available as labelled icons. */
+.app-shell[data-sidebar-collapsed="true"] {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+.app-shell {
+  grid-template-columns: 236px minmax(0, 1fr);
+}
+.sidebar-brand {
+  padding-left: 0;
+  padding-right: 0;
+  gap: 6px;
+}
+.sidebar-title {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-toggle {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  font-size: 22px;
+}
+[data-sidebar-collapsed="true"] .sidebar {
+  padding: 16px 8px;
+}
+[data-sidebar-collapsed="true"] .sidebar-brand {
+  justify-content: center;
+}
+[data-sidebar-collapsed="true"] .sidebar-title,
+[data-sidebar-collapsed="true"] .sidebar-brand .brand-mark,
+[data-sidebar-collapsed="true"] .sidebar-heading,
+[data-sidebar-collapsed="true"] .nav-label,
+[data-sidebar-collapsed="true"] .nav-badge,
+[data-sidebar-collapsed="true"] .nav-status-dot {
+  display: none;
+}
+[data-sidebar-collapsed="true"] .nav-item {
+  justify-content: center;
+  min-height: 36px;
+}
+[data-sidebar-collapsed="true"] .sidebar-foot {
+  justify-content: center;
+}
+.claude-account-card {
+  border-color: color-mix(in srgb, #db7955 36%, var(--hairline));
+  box-shadow: 0 0 22px color-mix(in srgb, #db7955 9%, transparent);
+}
+.account-plan-badge {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 99px;
+  padding: 3px 8px;
+  max-width: 230px;
+  cursor: pointer;
+}
+.account-plan-badge option {
+  background: var(--surface);
+  color: var(--ink);
+}
+.claude-plan-badge {
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, #db7955 35%, transparent);
+  background: color-mix(in srgb, #db7955 12%, transparent);
+}
+.codex-launchers {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.antigravity-card {
+  gap: 16px;
+  margin-bottom: 20px;
+  border-color: color-mix(in srgb, #8b8cf8 35%, var(--hairline));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, #8b8cf8 7%, transparent),
+      transparent 55%
+    ),
+    var(--surface);
+}
+.antigravity-brand-mark {
+  background: #6e73d8;
+  box-shadow: 0 5px 14px color-mix(in srgb, #8b8cf8 20%, transparent);
+}
+.antigravity-card .account-plan-badge {
+  color: #8b8cf8;
+  background: color-mix(in srgb, #8b8cf8 12%, transparent);
+  border: 1px solid color-mix(in srgb, #8b8cf8 30%, transparent);
+}
