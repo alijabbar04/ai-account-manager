@@ -41,6 +41,7 @@ var api = {
   login: (profileId) =>
     import_electron.ipcRenderer.invoke("profiles:login", profileId),
   launchers: {
+    claudeApp: () => import_electron.ipcRenderer.invoke("launchers:claudeApp"),
     claudeCowork: () =>
       import_electron.ipcRenderer.invoke("launchers:claudeCowork"),
     codexChat: () => import_electron.ipcRenderer.invoke("launchers:codexChat"),

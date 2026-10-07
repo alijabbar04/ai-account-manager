@@ -3,6 +3,7 @@
 const path = require("node:path");
 
 const CLAUDE_COWORK_URL = "claude://cowork/new";
+const CLAUDE_APP_URL = "claude://claude.ai/new";
 const CODEX_NEW_CHAT_URL = "codex://threads/new";
 const VSCODE_CODEX_PANEL_URL = "vscode://openai.chatgpt/extension/panel/new";
 const CLAUDE_DEEP_LINK_HELP_URL =
@@ -11,6 +12,7 @@ const CODEX_COMMAND_HELP_URL =
   "https://learn.chatgpt.com/docs/reference/commands";
 
 const ALLOWED_EXTERNAL_TARGETS = new Set([
+  CLAUDE_APP_URL,
   CLAUDE_COWORK_URL,
   CODEX_NEW_CHAT_URL,
   VSCODE_CODEX_PANEL_URL,
@@ -203,6 +205,7 @@ function extensionStateFromStorage(markerValue, disabledValues, extensionId) {
 
 module.exports = {
   ALLOWED_EXTERNAL_TARGETS,
+  CLAUDE_APP_URL,
   CLAUDE_COWORK_URL,
   CLAUDE_DEEP_LINK_HELP_URL,
   CODEX_COMMAND_HELP_URL,

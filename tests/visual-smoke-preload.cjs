@@ -224,6 +224,10 @@ contextBridge.exposeInMainWorld("cam", {
     },
   },
   launchers: {
+    claudeApp: async () => {
+      launchCalls.push(["claude-app"]);
+      return { ok: true };
+    },
     claudeCowork: async () => ({ ok: true }),
     codexChat: async () => {
       launchCalls.push(["codex-chat"]);

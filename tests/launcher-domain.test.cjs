@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  CLAUDE_APP_URL,
   CLAUDE_COWORK_URL,
   CODEX_NEW_CHAT_URL,
   VSCODE_CODEX_PANEL_URL,
@@ -17,6 +18,7 @@ const {
 } = require("../app/dist-electron/launcher-domain.cjs");
 
 test("official app protocol targets are exact allowlist entries", () => {
+  assert.equal(validateExternalTarget(CLAUDE_APP_URL), CLAUDE_APP_URL);
   assert.equal(validateExternalTarget(CLAUDE_COWORK_URL), CLAUDE_COWORK_URL);
   assert.equal(validateExternalTarget(CODEX_NEW_CHAT_URL), CODEX_NEW_CHAT_URL);
   assert.throws(

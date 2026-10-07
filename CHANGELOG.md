@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.4] — 2026-10-07
+
+### Changed
+
+- Add Open Claude before the Claude card's VS Code actions, using Claude Desktop's official new-chat link.
+- Use the same neutral style for Claude's Open in VS Code button as the other launch buttons.
+- Rename New Codex chat to Open Codex. The supported Codex new-chat link still reuses its existing app window; a separate window remains an action inside Codex.
+
 ## [1.7.3] — 2026-10-07
 
 ### Changed

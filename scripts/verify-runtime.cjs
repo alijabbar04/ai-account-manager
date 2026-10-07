@@ -122,6 +122,7 @@ for (const channel of [
   "automation:clearActivity",
   "sessions:openLoginLink",
   "sessions:cleanupData",
+  "launchers:claudeApp",
   "launchers:claudeCowork",
   "launchers:codexChat",
   "launchers:vscodeCodex",
@@ -173,7 +174,8 @@ for (const feature of [
   "Collapse sidebar",
   "Detected from your account. Updates automatically.",
   "ProviderBrand",
-  "New Codex chat",
+  "Open Codex",
+  "Open Claude",
   "New VS Code Codex",
   "Profile visibility",
   "Manage profile visibility",
@@ -186,7 +188,6 @@ assert.ok(
   "Removed dashboard shortcut was reintroduced",
 );
 for (const removed of [
-  "Open Claude",
   "PowerShell",
   "Your work and personal Claude accounts",
   "Your default Claude Code account",

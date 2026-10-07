@@ -50,6 +50,7 @@ var {
   sanitizeAutomationSettings,
 } = require("./automation-domain.cjs");
 var {
+  CLAUDE_APP_URL,
   CLAUDE_COWORK_URL,
   CLAUDE_DEEP_LINK_HELP_URL,
   CODEX_COMMAND_HELP_URL,
@@ -679,6 +680,12 @@ async function openAllowedExternal(target, failureMessage) {
         failureMessage ?? `Could not open the requested app: ${err.message}`,
     };
   }
+}
+async function launchClaudeApp() {
+  return openAllowedExternal(
+    CLAUDE_APP_URL,
+    "Claude Desktop could not be opened. Install or update Claude Desktop, then try again.",
+  );
 }
 async function launchClaudeCowork() {
   const result = await openAllowedExternal(
@@ -4584,6 +4591,9 @@ var Backend = class {
         return { ok: false, error: err.message };
       }
     });
+    import_electron4.ipcMain.handle("launchers:claudeApp", () =>
+      launchClaudeApp(),
+    );
     import_electron4.ipcMain.handle("launchers:claudeCowork", () =>
       launchClaudeCowork(),
     );

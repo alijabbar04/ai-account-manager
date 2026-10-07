@@ -145,7 +145,7 @@ async function run() {
     }
   } else if (view.startsWith("dashboard")) {
     for (const value of [
-      "New Codex chat",
+      "Open Codex",
       "New VS Code Codex",
       "Open VS Code project…",
       "Codex",
@@ -289,9 +289,10 @@ async function run() {
     const actions = await win.webContents.executeJavaScript(`(async () => {
       const tick = () => new Promise(resolve => setTimeout(resolve, 50));
       const click = (scope, label) => [...document.querySelectorAll(scope + " button")].find(button => button.textContent === label)?.click();
+      click(".claude-account-card", "Open Claude"); await tick();
       click(".claude-account-card", "Open in VS Code"); await tick();
       click(".claude-account-card", "Open VS Code project…"); await tick();
-      click(".gpt-usage-card", "New Codex chat"); await tick();
+      click(".gpt-usage-card", "Open Codex"); await tick();
       click(".gpt-usage-card", "New VS Code Codex"); await tick();
       click(".gpt-usage-card", "Open VS Code project…"); await tick();
       click(".antigravity-card", "Open Antigravity"); await tick();
@@ -302,16 +303,24 @@ async function run() {
       const logosLoaded = images.length >= 4 && images.every(img => img.complete && img.naturalWidth > 0);
       const cleanClaudeHeaders = [...document.querySelectorAll(".claude-account-card")].every(card =>
         card.querySelector(".card-name").textContent === "Claude" && !card.querySelector(".visibility-button, .status-label, .badge, .dot"));
+      const claudeActions = [...document.querySelectorAll(".claude-account-card")].every(card => {
+        const buttons = [...card.querySelectorAll(".card-actions button")];
+        return buttons[0]?.textContent === "Open Claude" && buttons[1]?.textContent === "Open in VS Code" &&
+          !buttons[1].classList.contains("btn-primary");
+      });
       const beforeClaude = document.querySelector(".claude-account-card .account-plan-badge").textContent;
       await window.cam.__visualSmoke.changePlans(); window.dispatchEvent(new Event("focus")); await tick();
       const updated = document.querySelector(".gpt-usage-card .account-plan-badge").textContent === "Pro 200" &&
         document.querySelector(".claude-account-card .account-plan-badge").textContent === "Max 20x";
       const antigravityUpdated = ${JSON.stringify(process.env.SMOKE_ANTIGRAVITY_SIGNED_OUT === "1")} || document.querySelector(".antigravity-card .account-plan-badge").textContent === "Google AI Ultra";
-      return { ...(await window.cam.__visualSmoke.stats()), updated, antigravityUpdated, logosLoaded, cleanClaudeHeaders, beforeClaude,
+      return { ...(await window.cam.__visualSmoke.stats()), updated, antigravityUpdated, logosLoaded, cleanClaudeHeaders, claudeActions, beforeClaude,
         noSelectors: document.querySelectorAll(".account-plan-badge select, select.account-plan-badge").length === 0 };
     })()`);
     smoke.actions = actions;
+    if (!actions.claudeActions)
+      errors.push("Claude app launch must precede neutral VS Code buttons");
     const expected = [
+      ["claude-app"],
       ["claude-window", "work-smoke"],
       ["claude-project", "work-smoke"],
       ["codex-chat"],

@@ -13534,9 +13534,9 @@ function CodexLaunchers() {
               x(
                 "codex",
                 () => window.cam.launchers.codexChat(),
-                "New Codex chat opened.",
+                "Codex opened.",
               ),
-            children: v === "codex" ? "Opening…" : "New Codex chat",
+            children: v === "codex" ? "Opening…" : "Open Codex",
           }),
           i.jsx("button", {
             className: "btn",
@@ -13594,6 +13594,8 @@ function Jo({
   dashboardRole: dashboardRole,
 }) {
   const [C, g] = q.useState(!1),
+    [openingClaude, setOpeningClaude] = q.useState(false),
+    [claudeLaunchError, setClaudeLaunchError] = q.useState(null),
     B = q.useRef(null),
     { profile: R, identity: _, usage: Y, activity: U, isDefault: H } = f,
     N = Gv(f);
@@ -13607,6 +13609,27 @@ function Jo({
       () => document.removeEventListener("mousedown", k)
     );
   }, [C]);
+  const openClaude = async () => {
+    if (openingClaude) return;
+    setOpeningClaude(true);
+    setClaudeLaunchError(null);
+    try {
+      const result = await window.cam.launchers.claudeApp();
+      if (!result.ok)
+        setClaudeLaunchError(result.error ?? "Could not open Claude Desktop.");
+    } catch {
+      setClaudeLaunchError("Could not open Claude Desktop.");
+    } finally {
+      setOpeningClaude(false);
+    }
+  };
+  const claudeAppButton = i.jsx("button", {
+    className: "btn",
+    disabled: openingClaude,
+    onClick: openClaude,
+    title: "Open Claude Desktop",
+    children: openingClaude ? "Opening…" : "Open Claude",
+  });
   const ol = Y ? Xv(Y.limits) : [];
   return i.jsxs("article", {
     className: "card claude-account-card",
@@ -13703,6 +13726,13 @@ function Jo({
           }),
         ],
       }),
+      claudeLaunchError &&
+        i.jsx("div", {
+          className: "banner",
+          "data-kind": "warn",
+          role: "alert",
+          children: claudeLaunchError,
+        }),
       _.loggedIn
         ? i.jsxs(i.Fragment, {
             children: [
@@ -13747,8 +13777,9 @@ function Jo({
               i.jsxs("footer", {
                 className: "card-actions",
                 children: [
+                  claudeAppButton,
                   i.jsx("button", {
-                    className: "btn btn-primary",
+                    className: "btn",
                     onClick: () => v("vscode"),
                     title:
                       "Open a folderless VS Code window for this Claude Code profile",
@@ -13784,6 +13815,7 @@ function Jo({
               i.jsxs("footer", {
                 className: "card-actions",
                 children: [
+                  claudeAppButton,
                   i.jsx("button", {
                     className: "btn btn-primary",
                     onClick: () => v("login"),
