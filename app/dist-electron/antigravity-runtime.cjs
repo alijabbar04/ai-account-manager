@@ -6,21 +6,14 @@ const childProcess = require("node:child_process");
 
 const SERVICE = "/exa.language_server_pb.LanguageServerService/";
 
-// Antigravity 2.x and its VS Code extension share the Gemini data directory but
-// can have different in-memory authentication. Prefer the native app's server.
+// Names and paths are available without CIM privileges. Only PID-owned
+// loopback listeners may supply the native card's account.
 const PROCESS_QUERY = `
-@(Get-CimInstance Win32_Process -Filter "Name = 'language_server.exe' or Name = 'language_server_windows_x64.exe' or Name = 'agy.exe'" -ErrorAction Stop | Select-Object Name,ProcessId,CommandLine,ExecutablePath) | ConvertTo-Json -Compress
-`;
-
-const PROCESS_FALLBACK_QUERY = `
-@(Get-Process -Name 'language_server','language_server_windows_x64','agy' -ErrorAction SilentlyContinue | ForEach-Object {
-  [pscustomobject]@{ Name = $_.ProcessName + '.exe'; ProcessId = $_.Id; ExecutablePath = $_.Path }
+@(Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+  [pscustomobject]@{ Name = $_.ProcessName + '.exe'; ProcessId = $_.Id; ExecutablePath = $_.Path; MainWindowTitle = $_.MainWindowTitle }
 }) | ConvertTo-Json -Compress
 `;
-
-const PORT_QUERY = `
-@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Select-Object OwningProcess,LocalPort) | ConvertTo-Json -Compress
-`;
+const LAST_GOOD_TTL_MS = 3 * 60 * 1000;
 
 const INSTALL_QUERY = `
 $roots = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall')
@@ -115,12 +108,34 @@ function parseNetstat(output) {
   for (const line of String(output).split(/\r?\n/)) {
     const match = line.match(/^\s*TCP\s+(\S+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i);
     if (!match) continue;
+    const endpoint = match[1].match(/^(127\.0\.0\.1|\[::1\]):(\d+)$/);
+    if (!endpoint) continue;
     const port = Number(match[1].match(/:(\d+)$/)?.[1]);
     const owningProcess = Number(match[2]);
     if (Number.isInteger(port) && port > 0 && port <= 65535)
-      ports.push({ OwningProcess: owningProcess, LocalPort: port });
+      ports.push({
+        OwningProcess: owningProcess,
+        LocalPort: port,
+        LocalAddress: endpoint[1] === "[::1]" ? "::1" : endpoint[1],
+      });
   }
   return ports;
+}
+
+// agy.exe belongs to extensions and is never a source for the native card.
+// Newer Antigravity builds serve the account RPC from a bundled
+// resources\bin\language_server.exe child instead of Antigravity.exe itself.
+// It is accepted only when it lives inside the verified native install folder.
+function isNativeServer(server, _processes, executable) {
+  if (!server.executablePath || !executable) return false;
+  const serverPath = path.win32.normalize(server.executablePath).toLowerCase();
+  const appPath = path.win32.normalize(executable).toLowerCase();
+  if (/^Antigravity(?:\.exe)?$/i.test(server.name || "")) return serverPath === appPath;
+  if (/^language_server(?:\.exe)?$/i.test(server.name || "")) {
+    const bundled = path.win32.join(path.win32.dirname(appPath), "resources", "bin", "language_server.exe");
+    return serverPath === bundled;
+  }
+  return false;
 }
 
 function requestLocal(service, method, body, timeoutMs = 6000) {
@@ -131,7 +146,7 @@ function requestLocal(service, method, body, timeoutMs = 6000) {
     const data = body === undefined ? null : JSON.stringify(body);
     const request = transport.request(
       {
-        hostname: "127.0.0.1",
+        hostname: service.host || "127.0.0.1",
         port: service.port,
         path: method ? `${SERVICE}${method}` : "/",
         method: data === null ? "GET" : "POST",
@@ -199,6 +214,7 @@ function createAntigravityRuntime(options = {}) {
   let installPromise = null;
   let installCheckedAt = 0;
   let serviceCache = null;
+  let lastGood = null;
   let statusPromise = null;
   let loginPromise = null;
   let loginError = null;
@@ -208,7 +224,7 @@ function createAntigravityRuntime(options = {}) {
       execFile(
         executable,
         args,
-        { windowsHide: true, timeout: 10000, maxBuffer: 512 * 1024 },
+        { windowsHide: true, timeout: 10000, maxBuffer: 2 * 1024 * 1024 },
         (error, stdout) => {
           if (error) return resolve({ ok: false, rows: [] });
           try {
@@ -231,30 +247,43 @@ function createAntigravityRuntime(options = {}) {
   }
 
   async function listServers() {
-    const primary = await runPowerShell(PROCESS_QUERY);
-    const processes = primary.ok
-      ? primary.rows
-      : (await runPowerShell(PROCESS_FALLBACK_QUERY)).rows;
+    const processes = (await runPowerShell(PROCESS_QUERY)).rows;
     if (!processes.length) return [];
-    const listeners = await runPowerShell(PORT_QUERY);
-    const portRows = listeners.ok
-      ? listeners.rows
-      : (await runCommand("netstat.exe", ["-ano", "-p", "tcp"], parseNetstat))
-          .rows;
+    const portRows = (
+      await runCommand("netstat.exe", ["-ano", "-p", "tcp"], parseNetstat)
+    ).rows;
     const portsByPid = new Map();
     for (const row of portRows) {
       const pid = Number(row.OwningProcess);
       const port = Number(row.LocalPort);
       if (!Number.isInteger(pid) || !Number.isInteger(port)) continue;
-      if (!portsByPid.has(pid)) portsByPid.set(pid, new Set());
-      portsByPid.get(pid).add(port);
+      if (!portsByPid.has(pid)) portsByPid.set(pid, new Map());
+      portsByPid.get(pid).set(port, row.LocalAddress);
     }
     return processes.map((server) => ({
       name: server.Name,
+      pid: Number(server.ProcessId),
+      parentPid: Number(server.ParentProcessId),
       commandLine: server.CommandLine,
       executablePath: server.ExecutablePath,
-      ports: [...(portsByPid.get(Number(server.ProcessId)) || [])],
+      ports: [...(portsByPid.get(Number(server.ProcessId))?.keys() || [])],
+      portHosts: Object.fromEntries(
+        portsByPid.get(Number(server.ProcessId)) || [],
+      ),
+      mainWindowTitle: server.MainWindowTitle,
     }));
+  }
+
+  function nativeExecutable(server) {
+    if (!env.LOCALAPPDATA) return null;
+    const expected = path.win32.join(
+      env.LOCALAPPDATA,
+      "Programs",
+      "antigravity",
+      "Antigravity.exe",
+    );
+    // A matching bundled language_server proves the app exe, not itself.
+    return isNativeServer(server, [], expected) ? expected : null;
   }
 
   function isExecutable(candidate) {
@@ -308,16 +337,30 @@ function createAntigravityRuntime(options = {}) {
           if (executable) break;
         }
       }
+      // A running, path-verified app also proves installation when stat is denied.
+      if (!executable) {
+        const rows = options.listServers
+          ? await options.listServers()
+          : await listServers();
+        executable = rows.map(nativeExecutable).find(Boolean);
+      }
       return executable || null;
     })();
     return installPromise;
   }
 
-  async function probe(port, native) {
+  async function probe(port, server) {
     if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
     for (const protocol of ["http:", "https:"]) {
       try {
-        const service = { port, protocol, native };
+        const service = {
+          port,
+          protocol,
+          native: true,
+          pid: server.pid,
+          executablePath: server.executablePath,
+          host: server.portHosts?.[port] || "127.0.0.1",
+        };
         const page = await request(service, null, undefined, 1500);
         const match = page.match(
           /window\.__APP_CONFIG__\s*=\s*(\{[^\r\n]*?\})\s*;/,
@@ -330,52 +373,39 @@ function createAntigravityRuntime(options = {}) {
           config.csrfToken.length > 256
         )
           continue;
-        return { ...service, csrfToken: config.csrfToken };
+        const candidate = { ...service, csrfToken: config.csrfToken };
+        const auth = await request(candidate, "HasAuthToken", {});
+        if (typeof auth?.hasToken !== "boolean") continue;
+        return { ...candidate, auth };
       } catch {}
     }
     return null;
   }
 
-  async function findService({ nativeOnly = false, refresh = false } = {}) {
-    if (
-      !refresh &&
-      serviceCache &&
-      now() - serviceCache.checkedAt < 15000 &&
-      (!nativeOnly || serviceCache.native)
-    )
-      return serviceCache;
+  async function findService() {
     const processes = options.listServers
       ? await options.listServers()
       : await listServers();
-    const servers = processes
-      .filter((server) => {
-        if (server.name?.toLowerCase() !== "agy.exe") return true;
-        return /--app_data_dir(?:=|\s+)antigravity(?:\s|$)/.test(
-          server.commandLine || "",
-        );
-      })
-      .sort(
-        (a, b) =>
-          Number(a.name?.toLowerCase() === "agy.exe") -
-          Number(b.name?.toLowerCase() === "agy.exe"),
-      );
-    for (const server of servers) {
-      const native = server.name?.toLowerCase() !== "agy.exe";
-      if (nativeOnly && !native) continue;
-      const hinted = Number(
-        server.commandLine?.match(
-          /--(?:hub-port|https_server_port)(?:=|\s+)(\d+)/,
-        )?.[1],
-      );
-      for (const port of [...new Set([hinted, ...(server.ports || [])])]) {
-        const service = await probe(Number(port), native);
-        if (service) {
-          serviceCache = { ...service, checkedAt: now() };
-          return serviceCache;
-        }
+    const servers = processes.filter((server) => nativeExecutable(server));
+    // Revalidate PID ownership every time; cached ports can be reused by extensions.
+    const candidates = servers.flatMap((server) =>
+      (server.ports || []).map((port) => ({ server, port })),
+    );
+    candidates.sort((a, b) => {
+      const preferred = (c) =>
+        serviceCache &&
+        c.server.pid === serviceCache.pid &&
+        c.server.executablePath === serviceCache.executablePath &&
+        c.port === serviceCache.port;
+      return Number(Boolean(preferred(b))) - Number(Boolean(preferred(a)));
+    });
+    for (const { server, port } of candidates) {
+      const service = await probe(Number(port), server);
+      if (service) {
+        serviceCache = { ...service, checkedAt: now() };
+        return serviceCache;
       }
     }
-    serviceCache = null;
     return null;
   }
 
@@ -396,25 +426,7 @@ function createAntigravityRuntime(options = {}) {
         ...base,
         message: "Open Antigravity to detect its account and plan.",
       };
-    let auth;
-    try {
-      auth = await request(service, "HasAuthToken", {});
-    } catch {
-      service = await findService({ nativeOnly: true, refresh: true });
-      if (!service)
-        return {
-          ...base,
-          message: "Open Antigravity to detect its account and plan.",
-        };
-      try {
-        auth = await request(service, "HasAuthToken", {});
-      } catch {
-        return {
-          ...base,
-          message: "Antigravity account status is unavailable. Try Refresh.",
-        };
-      }
-    }
+    const auth = service.auth;
     if (!auth.hasToken)
       return {
         ...base,
@@ -422,12 +434,16 @@ function createAntigravityRuntime(options = {}) {
         message:
           loginError || "Sign in to Antigravity to detect your plan and usage.",
       };
-    const responses = await Promise.allSettled([
-      request(service, "GetAuthStatus", {}),
-      request(service, "GetUserStatus", {}),
-      request(service, "GetLoadCodeAssist", { forceRefresh: true }),
-      request(service, "RetrieveUserQuotaSummary", { forceRefresh: true }),
-    ]);
+    const responses = await Promise.allSettled(
+      [
+        ["GetAuthStatus", {}],
+        ["GetUserStatus", {}],
+        ["GetLoadCodeAssist", { forceRefresh: true }],
+        ["RetrieveUserQuotaSummary", { forceRefresh: true }],
+      ].map(([method, body]) =>
+        Promise.resolve().then(() => request(service, method, body)),
+      ),
+    );
     const [authResult, status, load, quota] = responses.map((result) =>
       result.status === "fulfilled" ? result.value : null,
     );
@@ -443,9 +459,12 @@ function createAntigravityRuntime(options = {}) {
     );
     const limits = quotaLimits(quota?.response);
     const loggedIn =
-      validAuth === true ? true : authResult?.authResult ? false : null;
+      validAuth === true ? true : validAuth === false ? false : null;
     return {
       ...base,
+      transientFailure: responses.some(
+        (result) => result.status === "rejected",
+      ),
       loggedIn,
       account:
         loggedIn === true ? { email, planLabel, planType: planLabel } : null,
@@ -476,6 +495,30 @@ function createAntigravityRuntime(options = {}) {
         limits: [],
         message: "Antigravity account status is unavailable. Try Refresh.",
       }))
+      .then((result) => {
+        const { transientFailure, ...current } = result;
+        const sameAccount =
+          !current.account?.email ||
+          !lastGood?.value.account?.email ||
+          current.account.email === lastGood.value.account.email;
+        if (
+          (current.loggedIn === null ||
+            (current.loggedIn === true && transientFailure && sameAccount)) &&
+          lastGood &&
+          now() - lastGood.at < LAST_GOOD_TTL_MS
+        ) {
+          return {
+            ...lastGood.value,
+            stale: true,
+            message:
+              "Antigravity is temporarily unavailable. Showing the last verified status.",
+          };
+        }
+        if (current.loggedIn === false) lastGood = null;
+        else if (current.loggedIn === true && !transientFailure)
+          lastGood = { value: current, at: now() };
+        return current;
+      })
       .finally(() => {
         statusPromise = null;
       });
@@ -553,4 +596,5 @@ module.exports = {
   detectedPlan,
   quotaLimits,
   parseNetstat,
+  isNativeServer,
 };

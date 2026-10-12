@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.7] — 2026-10-12
+
+### Fixed
+
+- Recognise native Antigravity servers using the shared agy.exe binary only when their process ancestry reaches the installed native application. Keep VS Code extension accounts isolated, including servers using the same app-data flag and product page.
+- Discover parent process IDs through Windows Toolhelp when CIM is denied, while preserving Get-Process, netstat, and older language-server detection.
+
 ## [1.7.6] — 2026-10-12
 
 ### Fixed
