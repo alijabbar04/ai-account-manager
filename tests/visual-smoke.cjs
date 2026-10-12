@@ -13,7 +13,7 @@ function argument(name, fallback) {
 
 app.setPath(
   "userData",
-  path.join(app.getPath("temp"), `aam-visual-smoke-${process.pid}`),
+  path.resolve(__dirname, "../release", `aam-visual-smoke-${process.pid}`),
 );
 
 async function run() {
@@ -187,21 +187,19 @@ async function run() {
       for (const value of ["Claude", "Max 5x"]) {
         if (!smoke.text.includes(value)) errors.push(`missing ${value}`);
       }
-      if (!dashboard.ordered)
-        errors.push("dashboard sections are out of order");
       if (
         !dashboard.work ||
-        !dashboard.personal ||
+        dashboard.personal ||
+        dashboard.work.bottom > dashboard.gpt.top
+      )
+        errors.push("exactly one Claude card must appear before Codex");
+      if (
         !dashboard.grid ||
+        !dashboard.work ||
         Math.abs(dashboard.work.left - dashboard.grid.left) > 1 ||
-        Math.abs(dashboard.personal.left - dashboard.grid.left) > 1 ||
-        Math.abs(dashboard.work.width - dashboard.grid.width) > 1 ||
-        Math.abs(dashboard.personal.width - dashboard.grid.width) > 1
+        Math.abs(dashboard.work.width - dashboard.grid.width) > 1
       ) {
-        errors.push("Work and Personal cards are not full width");
-      }
-      if (dashboard.personal?.top < dashboard.work?.bottom) {
-        errors.push("Work and Personal cards are not stacked");
+        errors.push("Dashboard Claude card is not full width");
       }
     } else if (
       view === "dashboard-hidden" &&
@@ -226,7 +224,10 @@ async function run() {
         Number(process.env.SMOKE_HIDDEN_OTHER_COUNT ?? 1) || 0,
       ),
     );
-    const expectedVisible = otherCount - hiddenCount;
+    const expectedVisible =
+      otherCount -
+      hiddenCount +
+      (process.env.SMOKE_HIDE_MAIN_PROFILES === "1" ? 0 : 1);
     if (
       smoke.layoutStatsBefore?.listStatesCalls !==
       smoke.layoutStatsAfter?.listStatesCalls
@@ -261,6 +262,22 @@ async function run() {
         `${selectedLabel} layout does not have visible selected state`,
       );
     }
+  }
+  if (argument("menu", "false") === "true") {
+    await win.webContents.executeJavaScript(
+      "document.querySelector('.claude-account-card [aria-label=\"Account menu\"]').click()",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const menuText = await win.webContents.executeJavaScript(
+      "document.querySelector('[role=menu]')?.innerText ?? ''",
+    );
+    smoke.menuText = menuText;
+    if (
+      !menuText.includes(
+        view === "dashboard" ? "Remove from Dashboard" : "Show on Dashboard",
+      )
+    )
+      errors.push("Claude menu failed to render dashboard action");
   }
   // Exercise the rail and its persistence, then restore the requested state.
   const sidebarCheck = await win.webContents.executeJavaScript(`(async () => {
@@ -300,7 +317,7 @@ async function run() {
       click(".antigravity-card", "Open VS Code project…"); await tick();
       if (${JSON.stringify(process.env.SMOKE_ANTIGRAVITY_SIGNED_OUT === "1")}) { click(".antigravity-card", "Sign in"); await tick(); }
       const images = [...document.querySelectorAll(".provider-brand img")];
-      const logosLoaded = images.length >= 4 && images.every(img => img.complete && img.naturalWidth > 0);
+      const logosLoaded = images.length >= 3 && images.every(img => img.complete && img.naturalWidth > 0);
       const cleanClaudeHeaders = [...document.querySelectorAll(".claude-account-card")].every(card =>
         card.querySelector(".card-name").textContent === "Claude" && !card.querySelector(".visibility-button, .status-label, .badge, .dot"));
       const claudeActions = [...document.querySelectorAll(".claude-account-card")].every(card => {
@@ -343,6 +360,28 @@ async function run() {
       !actions.beforeClaude.includes("Max 5x")
     )
       errors.push("automatic plan updates failed");
+  }
+  if (argument("selection", "false") === "true") {
+    const selection = await win.webContents.executeJavaScript(
+      "(async () => {\n      const tick = () => new Promise(resolve => setTimeout(resolve, 100));\n      const navigate = label => [...document.querySelectorAll('.nav-item')].find(button => button.getAttribute('aria-label').includes(label)).click();\n      navigate('Other Accounts'); await tick();\n      const card = document.querySelector('[data-profile-id=\"personal-smoke\"]');\n      card.querySelector('[aria-label=\"Account menu\"]').click(); await tick();\n      [...card.querySelectorAll('[role=menuitem]')].find(button => button.textContent === 'Show on Dashboard').click(); await tick();\n      navigate('Dashboard'); await tick();\n      const selected = [...document.querySelectorAll('.claude-account-card')].map(card => card.dataset.profileId);\n      document.querySelector('[aria-label=\"Account menu\"]').click(); await tick();\n      [...document.querySelectorAll('[role=menuitem]')].find(button => button.textContent === 'Remove from Dashboard').click(); await tick();\n      const cleared = document.querySelectorAll('.claude-account-card').length === 0 && document.body.textContent.includes('No Dashboard profile selected');\n      await window.cam.setDashboardProfile('work-smoke'); await tick();\n      return { selected, cleared };\n    })()",
+    );
+    smoke.selection = selection;
+    if (selection.selected.join(",") !== "personal-smoke" || !selection.cleared)
+      errors.push("Dashboard selection or clearing failed");
+  }
+  if (argument("boundary", "false") === "true") {
+    await win.webContents.executeJavaScript(
+      "window.cam.__visualSmoke.crashRender()",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    smoke.boundaryText = await win.webContents.executeJavaScript(
+      "document.body.innerText",
+    );
+    if (
+      !smoke.boundaryText.includes("Something went wrong") ||
+      !smoke.boundaryText.includes("Reload")
+    )
+      errors.push("Error boundary did not recover render failure");
   }
   if (argument("scroll", "top") === "bottom") {
     await win.webContents.executeJavaScript(

@@ -7,10 +7,13 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
-## [Unreleased]
+## [1.7.6] — 2026-10-12
 
 ### Fixed
 
+- Automatically show the first Claude profile on the Dashboard, including existing installs with unassigned profiles. Persist one selected profile with the existing atomic writer; preserve explicit clearing and personal profile isolation.
+- Add Show on Dashboard / Remove from Dashboard actions to Claude account menus, independent of terminal defaults and Other Accounts layout. Selecting a hidden profile restores its visibility.
+- Fix the Claude account menu render crash caused by stale default-action references. Add a top-level error boundary with a Reload panel.
 - Preserve Automation/Session profile metadata across the legacy v1.7.1 uninstaller, failed upgrades and future uninstalls. Keep start-at-login entries during upgrades.
 - Accept Windows' equivalent zero-revision ProductVersion (`1.7.5.0`) when confirming the installed application, and verify the actual EXE payload before release.
 - Restore the corrupted `resedit` lock entry to 1.7.2 and registry-backed integrity metadata for every locked dependency, without upgrading the rest of the tree.

@@ -4,6 +4,8 @@
 var import_electron = require("electron");
 var api = {
   listStates: () => import_electron.ipcRenderer.invoke("state:get"),
+  setDashboardProfile: (id) =>
+    import_electron.ipcRenderer.invoke("profiles:dashboard:set", id),
   createProfile: (name, dashboardRole) =>
     import_electron.ipcRenderer.invoke("profiles:create", name, dashboardRole),
   importProfile: (name, configDir, dashboardRole) =>

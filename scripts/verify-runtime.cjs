@@ -24,6 +24,12 @@ const files = {
     "dist-electron",
     "codex-plan-domain.cjs",
   ),
+  dashboardProfileDomain: path.join(
+    root,
+    "app",
+    "dist-electron",
+    "dashboard-profile-domain.cjs",
+  ),
   preload: path.join(root, "app", "dist-electron", "preload.cjs"),
   renderer: path.join(root, "app", "dist", "assets", "index-CfQCNBzk.js"),
   css: path.join(root, "app", "dist", "assets", "index-DR09S7BQ.css"),
@@ -87,6 +93,7 @@ for (const file of [
   files.antigravityRuntime,
   files.claudePlanRuntime,
   files.codexPlanDomain,
+  files.dashboardProfileDomain,
   files.preload,
   files.renderer,
   files.automationDomain,
@@ -128,6 +135,7 @@ for (const channel of [
   "launchers:vscodeCodex",
   "launchers:vscodeProject",
   "profiles:visibility:setHidden",
+  "profiles:dashboard:set",
   "profiles:otherAccountsLayout:get",
   "profiles:otherAccountsLayout:set",
 ]) {
@@ -156,6 +164,7 @@ for (const bridge of [
   "launchers",
   "visibility",
   "otherAccountsLayout",
+  "setDashboardProfile",
 ]) {
   assert.ok(preload.includes(bridge), `Preload bridge is missing ${bridge}`);
 }
@@ -180,6 +189,10 @@ for (const feature of [
   "Profile visibility",
   "Manage profile visibility",
   "Full width",
+  "Show on Dashboard",
+  "Remove from Dashboard",
+  "Something went wrong",
+  "AppErrorBoundary",
 ]) {
   assert.ok(renderer.includes(feature), `Renderer is missing ${feature}`);
 }

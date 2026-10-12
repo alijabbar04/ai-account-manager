@@ -13581,6 +13581,20 @@ function CodexLaunchers() {
     ],
   });
 }
+async function changeDashboardProfile(id, showToast) {
+  try {
+    const result = await window.cam.setDashboardProfile(id);
+    showToast(
+      result.ok
+        ? id === null
+          ? "Dashboard profile cleared."
+          : "Dashboard profile updated."
+        : (result.error ?? "Could not update the Dashboard profile."),
+    );
+  } catch {
+    showToast("Could not update the Dashboard profile.");
+  }
+}
 function Jo({
   state: f,
   now: o,
@@ -13590,6 +13604,7 @@ function Jo({
   onReveal: D,
   onRefresh: w,
   onHide: hideProfile,
+  onDashboardChange,
   dashboardRole: dashboardRole,
 }) {
   const [C, g] = q.useState(!1),
@@ -13699,9 +13714,12 @@ function Jo({
                     i.jsx("button", {
                       role: "menuitem",
                       onClick: () => {
-                        (g(!1), d(!H));
+                        g(!1);
+                        onDashboardChange(f.dashboardRole ? null : R.id);
                       },
-                      children: H ? "Clear default" : "Set as default",
+                      children: f.dashboardRole
+                        ? "Remove from Dashboard"
+                        : "Show on Dashboard",
                     }),
                     _.loggedIn &&
                       i.jsx("button", {
@@ -15031,7 +15049,6 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
     [gptRefreshing, setGptRefreshing] = q.useState(!1),
     [showAlerts, setShowAlerts] = q.useState(!1),
     [showUpdates, setShowUpdates] = q.useState(!1),
-    [showPersonalAdd, setShowPersonalAdd] = q.useState(!1),
     [undo, setUndo] = q.useState(null),
     [antigravityRefresh, setAntigravityRefresh] = q.useState(0);
   q.useEffect(
@@ -15082,16 +15099,6 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
             : await window.cam.launchVSCode(id);
       !result.ok && result.error && o(result.error);
     },
-    setDefault = async (id, enabled) => {
-      const result = await window.cam.setDefault(enabled ? id : null);
-      !result.ok && result.error
-        ? o(result.error)
-        : o(
-            enabled
-              ? "Default set. New terminals will use this account."
-              : "Default cleared. New terminals will use ~/.claude.",
-          );
-    },
     hideProfile = async (state) => {
       const result = await window.cam.visibility.setHidden(
         state.profile.id,
@@ -15109,15 +15116,10 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
         : o(result.error ?? "Could not restore this profile.");
     },
     visible = d?.filter((state) => !state.hidden) ?? null,
-    work =
-      visible?.find((state) => state.dashboardRole === "work") ??
-      visible?.find((state) => state.isDefault) ??
-      null,
-    personal =
-      visible?.find((state) => state.dashboardRole === "personal") ?? null,
+    dashboard = visible?.find((state) => state.dashboardRole) ?? null,
     allHidden = Boolean(d?.length && visible?.length === 0),
-    defaultHidden = Boolean(
-      d?.some((state) => state.isDefault && state.hidden),
+    dashboardHidden = Boolean(
+      d?.some((state) => state.dashboardRole && state.hidden),
     ),
     renderCard = (state, role) =>
       i.jsx(Jo, {
@@ -15125,7 +15127,7 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
         now: f,
         dashboardRole: role,
         onLaunch: (kind) => launchProfile(kind, state.profile.id),
-        onSetDefault: (enabled) => setDefault(state.profile.id, enabled),
+        onDashboardChange: (id) => changeDashboardProfile(id, o),
         onRename: () => D({ type: "rename", state }),
         onRemove: () => D({ type: "remove", state }),
         onReveal: () => window.cam.revealFolder(state.profile.id),
@@ -15201,14 +15203,14 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
               })
             : i.jsxs(i.Fragment, {
                 children: [
-                  defaultHidden &&
+                  dashboardHidden &&
                     i.jsxs("div", {
                       className: "banner",
                       "data-kind": "warn",
                       children: [
                         i.jsx("span", {
                           children:
-                            "The default Claude Code profile is hidden; no substitute is shown as the default.",
+                            "The Dashboard profile is hidden. Show it again from Settings.",
                         }),
                         i.jsx("button", {
                           className: "btn btn-small",
@@ -15220,21 +15222,22 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
                   i.jsxs("div", {
                     className: "claude-dashboard-grid",
                     children: [
-                      work && renderCard(work, "work"),
-                      personal
-                        ? renderCard(personal, "personal")
+                      dashboard
+                        ? renderCard(dashboard, dashboard.dashboardRole)
                         : i.jsxs("section", {
                             className: "empty compact-empty",
                             children: [
-                              i.jsx("h2", { children: "Personal Claude" }),
+                              i.jsx("h2", {
+                                children: "No Dashboard profile selected",
+                              }),
                               i.jsx("p", {
                                 children:
-                                  "Optional: add one separate personal Claude Code profile.",
+                                  "Choose Show on Dashboard from an account's menu in Other Accounts.",
                               }),
                               i.jsx("button", {
                                 className: "btn",
-                                onClick: () => setShowPersonalAdd(!0),
-                                children: "+ Add personal profile",
+                                onClick: v,
+                                children: "Other Accounts",
                               }),
                             ],
                           }),
@@ -15272,15 +15275,6 @@ function Vv({ now: f, showToast: o, onGoAccounts: v, onGoSettings }) {
         i.jsx(UpdateSettingsDialog, {
           onClose: () => setShowUpdates(!1),
           onToast: o,
-        }),
-      showPersonalAdd &&
-        i.jsx(Kv, {
-          initialName: "Personal",
-          dashboardRole: "personal",
-          onClose: () => setShowPersonalAdd(!1),
-          onDone: (message) => {
-            (setShowPersonalAdd(!1), o(message));
-          },
         }),
       i.jsx(VisibilityUndo, { item: undo, onUndo: undoHide }),
     ],
@@ -15389,7 +15383,7 @@ function kv({ now: f, showToast: o, onGoSettings }) {
       }
     },
     rawOthers = q.useMemo(
-      () => v?.filter((N) => !N.isDefault && !N.dashboardRole) ?? null,
+      () => v?.filter((N) => !N.dashboardRole) ?? null,
       [v],
     ),
     U = q.useMemo(
@@ -15538,7 +15532,7 @@ function kv({ now: f, showToast: o, onGoSettings }) {
                     i.jsx("h2", { children: "No other accounts" }),
                     i.jsx("p", {
                       children:
-                        "Your default account lives on the Dashboard. Add another account to see it here.",
+                        "Your selected account lives on the Dashboard. Add another account to see it here.",
                     }),
                     i.jsx("div", {
                       className: "empty-actions",
@@ -15598,6 +15592,8 @@ function kv({ now: f, showToast: o, onGoSettings }) {
                             window.cam.refreshUsage(N.profile.id);
                           },
                           onHide: () => hideProfile(N),
+                          onDashboardChange: (id) =>
+                            changeDashboardProfile(id, o),
                         },
                         N.profile.id,
                       ),
@@ -19389,19 +19385,13 @@ function hy() {
       window.cam
         .listStates()
         .then((F) =>
-          H(
-            F.filter((Ml) => !Ml.isDefault && !Ml.dashboardRole && !Ml.hidden)
-              .length,
-          ),
+          H(F.filter((Ml) => !Ml.dashboardRole && !Ml.hidden).length),
         ));
     const P = window.cam.apiKeys.onChanged((F) => {
         (R(F), ol(), w(Date.now()));
       }),
       Xl = window.cam.onStateChanged((F) =>
-        H(
-          F.filter((Ml) => !Ml.isDefault && !Ml.dashboardRole && !Ml.hidden)
-            .length,
-        ),
+        H(F.filter((Ml) => !Ml.dashboardRole && !Ml.hidden).length),
       );
     return () => {
       (P(), Xl());
@@ -19523,6 +19513,38 @@ function hy() {
     ],
   });
 }
+class AppErrorBoundary extends q.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      return i.jsx("main", {
+        className: "view",
+        style: { minHeight: "100vh", display: "grid", placeItems: "center" },
+        children: i.jsxs("section", {
+          className: "panel compact-empty",
+          role: "alert",
+          children: [
+            i.jsx("h2", { children: "Something went wrong" }),
+            i.jsx("button", {
+              className: "btn",
+              onClick: () => window.location.reload(),
+              children: "Reload",
+            }),
+          ],
+        }),
+      });
+    }
+    return this.props.children;
+  }
+}
 Uv.createRoot(document.getElementById("root")).render(
-  i.jsx(Tv.StrictMode, { children: i.jsx(hy, {}) }),
+  i.jsx(Tv.StrictMode, {
+    children: i.jsx(AppErrorBoundary, { children: i.jsx(hy, {}) }),
+  }),
 );

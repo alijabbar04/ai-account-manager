@@ -74,7 +74,7 @@ const states = noProfiles
         },
         activity: {},
         isDefault: false,
-        dashboardRole: "personal",
+        dashboardRole: null,
         hidden: hideMainProfiles,
       },
     ];
@@ -170,6 +170,16 @@ contextBridge.exposeInMainWorld("cam", {
   },
   login: async () => ({ ok: true }),
   setDefault: async () => ({ ok: true }),
+  setDashboardProfile: async (id) => {
+    if (id !== null && !states.some((state) => state.profile.id === id))
+      return { ok: false, error: "Account not found." };
+    for (const state of states) {
+      state.dashboardRole = state.profile.id === id ? "work" : null;
+      if (state.profile.id === id) state.hidden = false;
+    }
+    for (const listener of stateListeners) listener([...states]);
+    return { ok: true };
+  },
   revealFolder: async () => undefined,
   antigravity: {
     status: async () => ({
@@ -215,6 +225,10 @@ contextBridge.exposeInMainWorld("cam", {
   },
   __visualSmoke: {
     stats: async () => ({ listStatesCalls, layoutSetCalls, launchCalls }),
+    crashRender: async () => {
+      states[0].identity = undefined;
+      for (const listener of stateListeners) listener([...states]);
+    },
     changePlans: async () => {
       gptUsage.account.planLabel = "Pro 200";
       antigravityPlan = "Google AI Ultra";

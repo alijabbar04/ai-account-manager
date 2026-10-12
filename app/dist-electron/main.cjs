@@ -30,6 +30,11 @@ var __toESM = (mod, isNodeMode, target) => (
   )
 );
 
+const {
+  normalizeDashboardRole,
+  selectDashboardProfile,
+  migrateDashboardSelection,
+} = require("./dashboard-profile-domain.cjs");
 const { reconcileCodexAccountPlan } = require("./codex-plan-domain.cjs");
 const { ClaudePlanService } = require("./claude-plan-runtime.cjs");
 const claudePlans = new ClaudePlanService();
@@ -750,12 +755,7 @@ function launchAntigravityVSCode(folder = null) {
   }
 }
 function vsCodeProfileName(profile) {
-  const label =
-    profile.dashboardRole === "work"
-      ? "Work"
-      : profile.dashboardRole === "personal"
-        ? "Personal"
-        : profile.name;
+  const label = profile.vscodeProfileLabel ?? profile.name;
   return `Claude ${String(label).replace(/"/g, "'").trim()}`;
 }
 function writeVSCodeProfileSettings(profileName, profile) {
@@ -840,7 +840,7 @@ function scheduleVSCodeProfileSettings(executable, profileName, profile) {
   setTimeout(tryWrite, 250);
 }
 function prepareProfileState(profile) {
-  if (profile.dashboardRole !== "personal") {
+  if (!profile.isolatedSharedState && profile.dashboardRole !== "personal") {
     linkSharedState(profile.configDir);
   }
 }
@@ -1209,7 +1209,11 @@ var path7 = __toESM(require("node:path"));
 var import_node_crypto = require("node:crypto");
 function load() {
   const data = readJson(profilesFile());
-  if (data && Array.isArray(data.profiles)) return data;
+  if (data && Array.isArray(data.profiles)) {
+    const migrated = migrateDashboardSelection(data);
+    if (migrated !== data) save(migrated);
+    return migrated;
+  }
   return { version: 1, profiles: [] };
 }
 function save(store) {
@@ -1229,17 +1233,6 @@ function listProfiles() {
 function getProfile(id) {
   return load().profiles.find((p) => p.id === id);
 }
-function normalizeDashboardRole(role) {
-  return role === "work" || role === "personal" ? role : null;
-}
-function ensureDashboardRoleAvailable(store, role) {
-  if (!role) return;
-  if (store.profiles.some((p) => p.dashboardRole === role)) {
-    throw new Error(
-      `A ${role} Claude account is already assigned to the Dashboard.`,
-    );
-  }
-}
 function createProfile(name, dashboardRole) {
   const store = load();
   const trimmed = name.trim();
@@ -1250,7 +1243,6 @@ function createProfile(name, dashboardRole) {
   ) {
     throw new Error(`An account named "${trimmed}" already exists.`);
   }
-  ensureDashboardRoleAvailable(store, role);
   const base = path7.join(os5.homedir(), `.claude-${slugify(trimmed)}`);
   let dir = base;
   for (let i = 2; fs7.existsSync(dir); i++) dir = `${base}${i}`;
@@ -1263,8 +1255,11 @@ function createProfile(name, dashboardRole) {
     ...(role ? { dashboardRole: role } : {}),
   };
   store.profiles.push(profile);
-  save(store);
-  return profile;
+  const selected = role
+    ? selectDashboardProfile(store, profile.id)
+    : migrateDashboardSelection(store);
+  save(selected);
+  return selected.profiles.find((p) => p.id === profile.id);
 }
 function importProfile(name, configDir, dashboardRole) {
   const store = load();
@@ -1287,7 +1282,6 @@ function importProfile(name, configDir, dashboardRole) {
   ) {
     throw new Error(`An account named "${trimmed}" already exists.`);
   }
-  ensureDashboardRoleAvailable(store, role);
   const profile = {
     id: (0, import_node_crypto.randomUUID)(),
     name: trimmed,
@@ -1296,8 +1290,11 @@ function importProfile(name, configDir, dashboardRole) {
     ...(role ? { dashboardRole: role } : {}),
   };
   store.profiles.push(profile);
-  save(store);
-  return profile;
+  const selected = role
+    ? selectDashboardProfile(store, profile.id)
+    : migrateDashboardSelection(store);
+  save(selected);
+  return selected.profiles.find((p) => p.id === profile.id);
 }
 function renameProfile(id, name) {
   const store = load();
@@ -1321,7 +1318,12 @@ function removeProfile(id, deleteDir) {
   const profile = store.profiles.find((p) => p.id === id);
   if (!profile) return;
   store.profiles = store.profiles.filter((p) => p.id !== id);
-  save(store);
+  save(
+    selectDashboardProfile(
+      store,
+      store.dashboardProfileId === id ? null : store.dashboardProfileId,
+    ),
+  );
   if (deleteDir) {
     const home = path7.resolve(os5.homedir()).toLowerCase();
     const target = path7.resolve(profile.configDir);
@@ -3569,7 +3571,11 @@ var Backend = class {
   async init() {
     this.defaultDir = await getDefaultConfigDir().catch(() => null);
     for (const profile of listProfiles()) {
-      if (profile.dashboardRole === "personal") continue;
+      if (
+        profile.isolatedSharedState === true ||
+        profile.dashboardRole === "personal"
+      )
+        continue;
       try {
         linkSharedState(profile.configDir);
       } catch (err) {
@@ -4400,9 +4406,7 @@ var Backend = class {
           activity,
           isDefault,
           hidden: hiddenProfileIds.has(profile.id),
-          dashboardRole:
-            normalizeDashboardRole(profile.dashboardRole) ??
-            (isDefault ? "work" : null),
+          dashboardRole: normalizeDashboardRole(profile.dashboardRole),
         };
       }),
     );
@@ -4456,7 +4460,10 @@ var Backend = class {
     import_electron4.ipcMain.handle("profiles:create", (_e, name, role) => {
       try {
         const profile = createProfile(name, role);
-        if (normalizeDashboardRole(role) !== "personal") {
+        if (
+          !profile.isolatedSharedState &&
+          profile.dashboardRole !== "personal"
+        ) {
           linkSharedState(profile.configDir);
         }
         void this.pushState();
@@ -4470,11 +4477,35 @@ var Backend = class {
       (_e, name, dir, role) => {
         try {
           const profile = importProfile(name, dir, role);
-          if (normalizeDashboardRole(role) !== "personal") {
+          if (
+            !profile.isolatedSharedState &&
+            profile.dashboardRole !== "personal"
+          ) {
             linkSharedState(profile.configDir);
           }
           void this.refreshAll(profile.id, true);
           return { ok: true, profile };
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      },
+    );
+    import_electron4.ipcMain.handle(
+      "profiles:dashboard:set",
+      async (_e, id) => {
+        try {
+          const store = selectDashboardProfile(load(), id);
+          save(store);
+          if (id !== null) {
+            const settings = loadSettings();
+            saveSettings({
+              hiddenProfileIds: settings.hiddenProfileIds.filter(
+                (profileId) => profileId !== id,
+              ),
+            });
+          }
+          await this.pushState();
+          return { ok: true };
         } catch (err) {
           return { ok: false, error: err.message };
         }
