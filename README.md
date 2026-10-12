@@ -53,10 +53,27 @@ treat `app/` as source.
 You need Windows 10 or 11. No GitHub account is required — the Releases page is
 public.
 
-1. **Download** `AI-Account-Manager-Setup-<version>.exe` from the
-   [Releases](../../releases) page.
-2. **Install.** Per-user, no admin rights. Windows will warn that the publisher
-   is unrecognised because the build is unsigned — **More info** → **Run anyway**.
+1. **Install the latest published stable version** with one PowerShell command:
+
+   ```powershell
+   irm https://raw.githubusercontent.com/alijabbar04/ai-account-manager/main/scripts/install.ps1 | iex
+   ```
+
+   This command becomes available when this change is merged. It downloads only
+   from this official repository, checks the release manifest and published
+   SHA-256 checksum, then opens the normal Windows installer. No Node.js, Git
+   or .NET is needed. Defender and SmartScreen remain enabled. It reports
+   installation success only after checking the installed executable and version.
+   The script and checksums are trusted through this GitHub repository over HTTPS;
+   they do not provide independent protection against compromise of the repository.
+   Drafts and prereleases are excluded. “Latest published” can be older than `main`;
+   as of 12 October 2026, the latest public installer is **1.7.1**, while source is
+   **1.7.5**. A new installer requires review and explicit publication approval.
+2. **Manual alternative:** download the EXE and `SHA256SUMS.txt` from the same
+   [official release](https://github.com/alijabbar04/ai-account-manager/releases/latest).
+   Compare `(Get-FileHash .\AI-Account-Manager-Setup-<version>.exe -Algorithm SHA256).Hash`
+   with the entry for that filename before opening the installer. An unsigned
+   installer may trigger a Windows warning; the script does not suppress it.
 3. **Install what it drives.** Claude Code is required; the Codex CLI and VS Code
    are optional. One step, no admin rights, skips anything you already have:
 
@@ -137,7 +154,7 @@ cd ai-account-manager
 npm start
 ```
 
-`setup.ps1` is idempotent and safe to re-run. It checks Node 20+ and a .NET 8+
+`setup.ps1` is idempotent and safe to re-run. It checks Node 22.12+ and a .NET 8+
 SDK, installs dependencies from the lockfile with `npm ci`, repairs the Electron
 binary if a proxy silently blocked its download, and runs the JavaScript and
 native helper suites so you know the checkout is sound before you touch
@@ -149,7 +166,7 @@ self-contained helper. See [docs/INSTALL.md](docs/INSTALL.md).
 Build the installer:
 
 ```powershell
-.\build\build.ps1     # output: release\AI-Account-Manager-Setup-1.7.1.exe
+.\build\build.ps1     # output: release\AI-Account-Manager-Setup-<version>.exe
 ```
 
 | Command | What it does |
@@ -304,16 +321,42 @@ short version:
 Versions are semantic, and `package.json` is the single source of truth — the
 app, the installer, the artifact name and the update manifest all read from it.
 
-1. Bump `version` in `package.json` **and** `app/package.json`, and add a
-   `CHANGELOG.md` entry.
+1. Run `npm run version:set -- 1.7.6` (use your intended version), and add a
+   `CHANGELOG.md` entry. This uses `npm version --no-git-tag-version`, updates
+   `app/package.json`, and proves nested dependency metadata did not change.
+   Never replace version strings across the lockfile. No tag or commit is created.
 2. `npm test`, then `.\build\build.ps1`, then install the result once. A
    packaged build fails on things a dev run never exercises.
-3. Commit, then tag: `git tag v1.7.1 && git push origin main --tags`.
+3. Commit the change through a reviewed PR. CI builds the actual installer and
+   uploads it, `latest.json`, `SHA256SUMS.txt` and `install.ps1` for inspection.
+   You can also run `release.yml` manually to prepare artifacts without any tag
+   or release. After approval, tag the exact reviewed commit with `v<version>`
+   and push only that tag.
 
 The tag starts [`release.yml`](.github/workflows/release.yml), which refuses to
 build if the tag and `package.json` disagree, runs the full suite, packages the
 installer, writes `SHA256SUMS.txt`, generates `latest.json` pointing at the
-release asset, and publishes a GitHub Release with all three attached.
+release asset, and prepares a **draft** GitHub Release with all four assets
+attached. It never makes a release public automatically. Download and smoke-test
+the installer on Windows, inspect the checksums and notes, then explicitly
+publish the draft in GitHub Releases. Already-public versions cannot be overwritten
+by this workflow. The one-command installer sees the new version only after publication.
+
+Installer validation also extracts the actual EXE payload, checks its current
+runtime/UI and resources against source, and runs four isolated NSIS user-data
+preservation scenarios. Upgrades protect Automation/Session profile metadata
+from the older uninstaller; future uninstalls retain durable user data.
+
+Repository administration: require the Windows CI `test-and-package` check on
+`main` and use reviewed PRs. As of this investigation, `main` has no branch
+protection, so CI can report a failure without preventing a direct push.
+
+CI and releases use Windows PowerShell 5.1, Node 22, and .NET SDK 8. Setup requires
+Node 22.12+ because the locked Electron rebuild tooling requires it. `setup.ps1`
+uses only `npm ci`; ETARGET, file locks (EPERM/EBUSY), network and execution-policy
+failures stop setup and print recovery steps. A runtime-only .NET installation
+is insufficient for source builds. `-SkipTests` explicitly reports an unvalidated
+checkout. See [the dependency and release investigation](docs/INSTALLATION-RELEASE-REPAIR.md).
 
 **Code signing is optional and nothing is bundled here.** Without a certificate
 the installer is unsigned and SmartScreen warns; users can verify the download
@@ -327,7 +370,7 @@ and `CSC_KEY_PASSWORD` automatically.
 If you host installers yourself rather than on GitHub Releases:
 
 ```powershell
-npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.1.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.1.exe'
+npm run release:manifest -- 'release/AI-Account-Manager-Setup-1.7.5.exe' 'https://downloads.example.com/AI-Account-Manager-Setup-1.7.5.exe'
 ```
 
 Host `release/latest.json` over HTTPS and paste that URL into

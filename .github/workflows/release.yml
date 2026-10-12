@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -31,8 +35,6 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - run: npm ci
-
       # A tag that disagrees with package.json would publish an installer whose
       # in-app version does not match the release it came from.
       - name: Check the tag matches package.json
@@ -40,17 +42,19 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
-          if ($env:GITHUB_REF -like "refs/tags/*") {
-              $tag = $env:GITHUB_REF -replace "^refs/tags/", ""
-              if ($tag -ne "v$version") {
-                  throw "Tag $tag does not match package.json version $version."
-              }
-          }
-          Write-Host "Releasing version $version"
+          $cache = npm.cmd config get cache
+          "NPM_LOG_DIRECTORY=$cache/_logs" >> $env:GITHUB_ENV
+          $tag = "v$version"
+          if ($env:GITHUB_REF -like "refs/tags/*") { $tag = $env:GITHUB_REF -replace "^refs/tags/", "" }
+          node scripts/verify-release.cjs --tag $tag
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "Preparing version $version (public publication requires approval)"
+
+      - name: Clean install and validate developer setup under Windows PowerShell 5.1
+        shell: powershell
+        run: .\setup.ps1 -SkipTests
 
       - run: npm run format:check
-
-      - run: npm test
 
       # Signing is optional. electron-builder signs when CSC_LINK is present and
       # produces an unsigned installer when it is not; no certificate or
@@ -58,7 +62,8 @@ jobs:
       # secrets WINDOWS_CERTIFICATE_BASE64 (base64 of a .pfx) and
       # WINDOWS_CERTIFICATE_PASSWORD. See SECURITY.md.
       - name: Build installer
-        run: npm run build:win
+        shell: powershell
+        run: .\build\build.ps1
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
@@ -88,31 +93,60 @@ jobs:
           $url = "https://github.com/${{ github.repository }}/releases/download/$tag/AI-Account-Manager-Setup-$version.exe"
           npm run release:manifest -- $installer $url
 
-      - name: Publish SHA-256 checksums
-        shell: pwsh
-        run: |
-          Get-ChildItem release -Filter *.exe |
-              ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
-              Set-Content release/SHA256SUMS.txt -Encoding ascii
-          Get-Content release/SHA256SUMS.txt
+      - name: Verify exact installer, manifest and SHA-256 artifacts
+        run: npm run verify:release -- --tag "v${{ env.PACKAGE_VERSION }}" --artifacts --official
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ai-account-manager-windows
+          name: ai-account-manager-windows-${{ env.PACKAGE_VERSION }}
           if-no-files-found: error
           path: |
-            release/*.exe
+            release/AI-Account-Manager-Setup-${{ env.PACKAGE_VERSION }}.exe
             release/latest.json
             release/SHA256SUMS.txt
+            release/install.ps1
 
-      - name: Create the GitHub Release
+      - name: Refuse to modify an already published release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          try {
+              $existing = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/v$env:PACKAGE_VERSION" -Headers $headers
+              if (-not $existing.draft) { throw 'This version is already public. Prepare a new version instead of overwriting published assets.' }
+          } catch {
+              if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+          }
+
+      - name: Prepare draft GitHub Release for explicit publication approval
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: AI Account Manager ${{ github.ref_name }}
           generate_release_notes: true
+          draft: true
+          fail_on_unmatched_files: true
           files: |
-            release/*.exe
+            release/AI-Account-Manager-Setup-${{ env.PACKAGE_VERSION }}.exe
             release/latest.json
             release/SHA256SUMS.txt
+            release/install.ps1
+
+      - name: Explain approval and release status
+        shell: pwsh
+        run: |
+          "Prepared $env:PACKAGE_VERSION. Tests, installer, embedded version, manifest and SHA-256 checks passed." >> $env:GITHUB_STEP_SUMMARY
+          "A tag prepares a draft release only. Review and smoke-test the downloaded artifacts, then explicitly publish the draft in GitHub Releases. workflow_dispatch builds artifacts without creating a release or tag." >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-failure-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ env.NPM_LOG_DIRECTORY }}
+            release/builder-debug.yml

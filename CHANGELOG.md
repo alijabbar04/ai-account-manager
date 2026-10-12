@@ -7,6 +7,17 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [Unreleased]
+
+### Fixed
+
+- Preserve Automation/Session profile metadata across the legacy v1.7.1 uninstaller, failed upgrades and future uninstalls. Keep start-at-login entries during upgrades.
+- Accept Windows' equivalent zero-revision ProductVersion (`1.7.5.0`) when confirming the installed application, and verify the actual EXE payload before release.
+- Restore the corrupted `resedit` lock entry to 1.7.2 and registry-backed integrity metadata for every locked dependency, without upgrading the rest of the tree.
+- Make developer setup fail explicitly on missing SDKs or failed `npm ci`, with Windows PowerShell 5.1 diagnostics and verified Electron extraction.
+- Validate versions, packaged runtime/resources, installer metadata, manifests and checksums before preparing a draft release. Public publication requires explicit approval.
+- Add a standalone PowerShell installer for the latest official stable release, with checksum verification and no end-user build prerequisites.
+
 ## [1.7.5] — 2026-10-07
 
 ### Changed

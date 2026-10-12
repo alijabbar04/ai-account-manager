@@ -6,8 +6,8 @@
 #  Prerequisite: .\setup.ps1 has been run once.
 #
 #  This wraps 'npm run build:win' (tests -> electron-builder --win nsis) and
-#  first closes any running copy of the app, which is the most common reason a
-#  build fails: electron-builder cannot overwrite locked files, and the app's
+#  first checks for a running packaged copy from this checkout: electron-builder
+#  cannot overwrite locked files, and the app's
 #  single-instance lock makes a freshly built copy quit on launch.
 #
 #  Code signing is automatic when CSC_LINK and CSC_KEY_PASSWORD are set in the
@@ -23,14 +23,9 @@ if (-not (Test-Path (Join-Path $repo "node_modules"))) {
     exit 1
 }
 
-# --- Close any running instance -------------------------------------------
-$running = Get-Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.ProcessName -in @("AI Account Manager", "Claude Account Manager", "electron") }
-if ($running) {
-    Write-Host "Closing $($running.Count) running instance(s) first..." -ForegroundColor Yellow
-    $running | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-}
+# Check this checkout's packaged processes only; avoid terminating unrelated Electron apps.
+$running = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith((Join-Path $repo 'release\win-unpacked\'), [StringComparison]::OrdinalIgnoreCase) }
+if ($running) { throw 'Close the packaged app running from this checkout before rebuilding.' }
 
 # --- Version --------------------------------------------------------------
 $pkg = Get-Content (Join-Path $repo "package.json") -Raw | ConvertFrom-Json
@@ -46,9 +41,14 @@ if ($env:CSC_LINK) {
 # --- Build ----------------------------------------------------------------
 Push-Location $repo
 try {
+    node.exe scripts/verify-release.cjs
+    if ($LASTEXITCODE -ne 0) { throw 'Application version/lockfile checks failed.' }
+    # Prevent a failed build from being mistaken for an older successful artifact.
+    $oldInstaller = Join-Path $repo "release\AI-Account-Manager-Setup-$version.exe"
+    if (Test-Path -LiteralPath $oldInstaller) { Remove-Item -LiteralPath $oldInstaller -Force }
     Write-Host "`nRunning tests, then electron-builder..." -ForegroundColor Cyan
     Write-Host "(first run downloads electron-builder's NSIS tooling - be patient)`n"
-    npm run build:win
+    npm.cmd run build:win
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nBuild failed - see the output above." -ForegroundColor Red
         Write-Host "If it was the runtime verification that failed, an edit to app\ removed" -ForegroundColor Red
@@ -62,6 +62,14 @@ try {
 # --- Report ---------------------------------------------------------------
 $exe = Join-Path $repo "release\AI-Account-Manager-Setup-$version.exe"
 if (Test-Path $exe) {
+    & (Join-Path $repo 'scripts\verify-installer.ps1') -Installer $exe -Version $version
+    if ($LASTEXITCODE -ne 0) { throw 'Windows installer version verification failed.' }
+    & powershell.exe -NoProfile -NonInteractive -File (Join-Path $repo 'tests\install-smoke.ps1') -Installer $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Standalone installer smoke checks failed.' }
+    node.exe (Join-Path $repo 'scripts\verify-installer-preservation.cjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Installer user-data preservation checks failed.' }
+    node.exe (Join-Path $repo 'scripts\verify-installer-payload.cjs') $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Actual installer payload verification failed.' }
     $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
     Write-Host "`nDONE: $exe ($mb MB)" -ForegroundColor Green
     Write-Host ""

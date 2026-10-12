@@ -33,16 +33,27 @@ jobs:
       # 'npm ci' installs exactly what package-lock.json pins and fails if the
       # lockfile has drifted from package.json.
       - name: Install JavaScript dependencies
-        run: npm ci
+        shell: powershell
+        run: |
+          $cache = npm.cmd config get cache
+          "NPM_LOG_DIRECTORY=$cache/_logs" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          .\setup.ps1 -SkipTests
 
       - name: Verify formatting
         run: npm run format:check
 
-      - name: Run JavaScript, runtime and native helper tests
-        run: npm test
+      - name: Test and build Windows installer and unpacked application
+        shell: powershell
+        run: .\build\build.ps1
 
-      - name: Build unpacked Windows application
-        run: npm run build:dir
+      - name: Generate and validate release artifacts
+        shell: powershell
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          npm.cmd run release:manifest -- "release/AI-Account-Manager-Setup-$version.exe" "https://github.com/alijabbar04/ai-account-manager/releases/download/v$version/AI-Account-Manager-Setup-$version.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm.cmd run verify:release -- --artifacts --official
 
       - name: Upload reviewable Windows build
         uses: actions/upload-artifact@v4
@@ -50,3 +61,24 @@ jobs:
           name: ai-account-manager-windows-unpacked
           path: release/win-unpacked/
           if-no-files-found: error
+
+      - name: Upload reviewable installer, manifest and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-account-manager-installer-${{ env.PACKAGE_VERSION }}
+          if-no-files-found: error
+          path: |
+            release/AI-Account-Manager-Setup-${{ env.PACKAGE_VERSION }}.exe
+            release/latest.json
+            release/SHA256SUMS.txt
+            release/install.ps1
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ci-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ env.NPM_LOG_DIRECTORY }}
+            release/builder-debug.yml

@@ -39,9 +39,14 @@ cd ai-account-manager
 npm start
 ```
 
-`setup.ps1` checks Node 20+ (22 is what CI uses) and a .NET 8+ SDK, installs
+`setup.ps1` checks Node 22.12+ (22 is what CI uses) and a .NET 8+ SDK, installs
 dependencies from the lockfile, repairs a missing Electron binary, and runs the
 full suite so you know the checkout is sound before you touch it.
+
+It uses `npm.cmd ci` exclusively and stops on failure; it never regenerates the
+lockfile. Set application versions with `npm run version:set -- <version>`.
+This checks that every nested dependency and its integrity metadata is unchanged.
+Release tags build drafts; public publication requires an explicit maintainer action.
 
 You also need [Claude Code](https://claude.com/claude-code) on your PATH for the
 app to do anything useful at runtime. The Codex CLI is optional.

@@ -15,8 +15,8 @@ second launch exits immediately and looks like a crash.
 
 Check Task Manager for an existing **AI Account Manager** process (or `electron`
 if running from source) and close it, or use the window already open. This is
-also the top cause of a failed build — `build\build.ps1` closes stray instances
-for you first.
+also a common cause of a failed build. `build\build.ps1` asks you to close
+processes running from this checkout; it does not terminate unrelated Electron apps.
 
 If there is genuinely nothing running: check your antivirus quarantine (unsigned
 installers are a common false positive), then reinstall from Releases.
@@ -24,15 +24,31 @@ installers are a common false positive), then reinstall from Releases.
 ### Windows says "Windows protected your PC"
 
 Expected — the build is unsigned unless `CSC_LINK` was set at build time.
-**More info** → **Run anyway**.
+Verify the official release checksum and follow your Windows or organization
+policy. The installation script leaves SmartScreen and Defender enabled.
 
 ### PowerShell refuses to run `setup.ps1` or `build.ps1`
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Unblock-File .\setup.ps1
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 ```
 
-Once, in the same window. Affects only that window.
+Review downloaded scripts first. If local policy permits, the policy command
+affects this terminal only. Group Policy may require your administrator.
+Setup uses `npm.cmd` so an unrelated `npm.ps1` policy block cannot interrupt npm.
+
+### `npm ci` fails with ETARGET or EPERM
+
+`resedit@1.7.5` was a corrupted transitive lockfile entry, not an application
+dependency that should track the app's version. Update to the reviewed repair
+and rerun `setup.ps1`. Do not replace all version strings or fall back to
+`npm install`; setup intentionally stops to preserve the tracked lockfile.
+
+For EPERM/EBUSY, close this checkout's app and build processes, check free space
+and security-software logs, then retry `npm.cmd ci`. Keep security protections
+enabled. For ETARGET on a different version, capture the npm debug-log path and
+report it so the lockfile can be reviewed and regenerated through npm.
 
 ### Running from source, the app exits without a window
 
@@ -67,15 +83,12 @@ in the archive and exits successfully, which makes it look like it worked. The
 verified zip is already cached, so finish the job yourself:
 
 ```powershell
-$version = (Get-Content node_modules\electron\package.json -Raw | ConvertFrom-Json).version
-$zip = Get-ChildItem "$env:LOCALAPPDATA\electron\Cache" -Recurse -Filter "electron-v$version-win32-x64.zip" | Select-Object -First 1
-Remove-Item node_modules\electron\dist -Recurse -Force
-Expand-Archive -LiteralPath $zip.FullName -DestinationPath node_modules\electron\dist
-Set-Content node_modules\electron\path.txt "electron.exe" -NoNewline
+npm.cmd run verify:electron
 ```
 
-`setup.ps1` does all of the above automatically, including the extraction
-fallback — re-running it is the quickest fix for either cause.
+This verifies the archive against Electron's published SHA-256 before extraction.
+`setup.ps1` runs it automatically. Node 22.12+ is required by the pinned build
+toolchain; Node 22 LTS matches CI. Check approved proxy settings if downloads fail.
 
 ---
 
