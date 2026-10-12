@@ -54,17 +54,36 @@ winget install --id Microsoft.VisualStudioCode --exact    # optional
 
 ### Step 1 — Download
 
+For a verified download and normal interactive installer, run this in Windows
+PowerShell (available after the installation repair is merged):
+
+```powershell
+irm https://raw.githubusercontent.com/alijabbar04/ai-account-manager/main/scripts/install.ps1 | iex
+```
+
+It selects the latest **published stable release**, downloads from the official
+repository, and verifies its SHA-256, release manifest, size and embedded version.
+No Node.js, Git or .NET is required to install the app. Draft releases and newer
+unreleased source are excluded. Verification failure prevents installer launch.
+The script preserves the download's Internet-zone marker and leaves Defender and
+SmartScreen enabled. Repository access over HTTPS is the trust source for the
+bootstrap and checksums.
+
+For manual installation:
+
 Go to the **Releases** page (add `/releases` to the repository address), open the
 newest release, and download `AI-Account-Manager-Setup-<version>.exe` from
 **Assets**.
+Download `SHA256SUMS.txt` from that same release and compare its entry for the
+EXE with `Get-FileHash <downloaded-installer.exe> -Algorithm SHA256` before opening it.
 
 ### Step 2 — Install
 
 Run the downloaded file.
 
-Windows may show **"Windows protected your PC"**. Expected — the build is not
-code-signed, which only means no certificate was purchased. Click **More info**,
-then **Run anyway**. Your browser may warn on download too; choose **Keep**.
+Windows may show **"Windows protected your PC"** for unsigned builds. Check the
+official source and checksum, and follow your organization's policy. The
+installation script does not suppress this warning or disable protection.
 
 The installer is **per-user**, so no admin rights. It creates a Desktop shortcut
 and a Start Menu entry.

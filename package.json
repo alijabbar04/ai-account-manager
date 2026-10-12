@@ -10,6 +10,10 @@
     "format": "prettier --write app scripts tests .github",
     "format:check": "prettier --check app scripts tests .github",
     "verify": "node scripts/verify-runtime.cjs",
+    "verify:release": "node scripts/verify-release.cjs",
+    "verify:dependencies": "node scripts/verify-dependencies.cjs",
+    "verify:electron": "node scripts/ensure-electron.cjs",
+    "version:set": "node scripts/set-version.cjs",
     "verify:safestorage": "node scripts/verify-safestorage-migration.cjs",
     "test:runtime": "node --test tests/*.test.cjs && node scripts/verify-runtime.cjs",
     "automation:test": "dotnet run --project automation/tests/AIAccountManager.Automation.Tests/AIAccountManager.Automation.Tests.csproj --configuration Release",
@@ -17,8 +21,8 @@
     "automation:publish": "dotnet publish automation/src/AIAccountManager.Automation/AIAccountManager.Automation.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true --output automation/artifacts/win-x64 && node scripts/stage-automation-helper.cjs",
     "automation:soak": "automation/artifacts/win-x64/AIAccountManager.Automation.exe --performance-soak 60",
     "test": "npm run test:runtime && npm run automation:test && npm run automation:harness:build",
-    "build:dir": "npm run automation:publish && npm test && electron-builder --dir --win",
-    "build:win": "npm run automation:publish && npm test && electron-builder --win nsis --publish never",
+    "build:dir": "npm run verify:release && npm run verify:electron && npm run automation:publish && npm test && electron-builder --dir --win && node scripts/verify-packaged.cjs",
+    "build:win": "npm run verify:release && npm run verify:electron && npm run automation:publish && npm test && electron-builder --win nsis --publish never && node scripts/verify-packaged.cjs",
     "release:manifest": "node scripts/make-manifest.cjs"
   },
   "dependencies": {

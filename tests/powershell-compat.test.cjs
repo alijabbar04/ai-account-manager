@@ -31,6 +31,20 @@ test("there are PowerShell scripts to check", () => {
 for (const relative of scripts) {
   const file = path.join(root, relative);
 
+  test(
+    `${relative} parses under actual Windows PowerShell 5.1`,
+    { skip: process.platform !== "win32" },
+    () => {
+      const command =
+        "$errors = $null; $tokens = $null; [System.Management.Automation.Language.Parser]::ParseFile($env:CAM_PARSE_FILE, [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Output; exit 1 }";
+      execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", command],
+        { env: { ...process.env, CAM_PARSE_FILE: file } },
+      );
+    },
+  );
+
   // Trap 1: PowerShell 7 operators. These are parse errors in 5.1, so the
   // script dies before its first line runs - and the error points at whatever
   // line the parser gave up on, not the operator.
@@ -80,6 +94,7 @@ test("the scripts an end user runs are reachable and self-contained", () => {
   for (const relative of [
     "scripts/install-prerequisites.ps1",
     "scripts/diagnose-claude-cli.ps1",
+    "scripts/install.ps1",
   ]) {
     const text = fs.readFileSync(path.join(root, relative), "utf8");
     assert.ok(
