@@ -56,14 +56,14 @@ jobs:
           npm.cmd run verify:release -- --artifacts --official
 
       - name: Upload reviewable Windows build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ai-account-manager-windows-unpacked
           path: release/win-unpacked/
           if-no-files-found: error
 
       - name: Upload reviewable installer, manifest and checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ai-account-manager-installer-${{ env.PACKAGE_VERSION }}
           if-no-files-found: error
@@ -75,7 +75,7 @@ jobs:
 
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-ci-diagnostics
           if-no-files-found: ignore
