@@ -6,6 +6,14 @@ $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'scripts\install.ps1')
 $script:sourceInstaller = (Get-Item -LiteralPath $Installer).FullName
 $script:version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
+function Get-ItemProperty { param($Path, $ErrorAction)
+    return @{ DisplayName = 'AI Account Manager'; DisplayVersion = $script:version; InstallLocation = (Join-Path $root 'release\win-unpacked') }
+}
+if (-not (Test-InstalledVersion $script:version)) { throw 'Actual built application ProductVersion was rejected by installation detection.' }
+Remove-Item Function:\Get-ItemProperty
+if (-not (Test-ApplicationProductVersion "$script:version.0" $script:version)) { throw 'Windows zero-revision product version was rejected.' }
+if (Test-ApplicationProductVersion "$script:version.1" $script:version) { throw 'A different product revision was accepted.' }
+if (Test-ApplicationProductVersion ($script:version + '0') $script:version) { throw 'A mismatched product version was accepted.' }
 $script:digest = (Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash.ToLowerInvariant()
 $script:name = "AI-Account-Manager-Setup-$script:version.exe"
 $script:url = "https://github.com/alijabbar04/ai-account-manager/releases/download/v$script:version/$script:name"

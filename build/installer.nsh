@@ -1,3 +1,60 @@
+; v1.7.1's uninstaller deletes session-profiles.json even during an upgrade.
+; Keep a durable, same-user backup across that legacy uninstaller and restore
+; only if the file was removed. It contains profile metadata, not credentials.
+!macro customHeader
+  !ifndef BUILD_UNINSTALLER
+    Var aamSessionProfiles
+    Function aamRestoreSessionProfiles
+      ${if} $aamSessionProfiles != ""
+      ${andIf} ${FileExists} "$aamSessionProfiles.aam-upgrade-backup"
+        ${ifNot} ${FileExists} "$aamSessionProfiles"
+          ClearErrors
+          CopyFiles /SILENT "$aamSessionProfiles.aam-upgrade-backup" "$aamSessionProfiles"
+          ${if} ${Errors}
+            Return
+          ${endif}
+        ${endif}
+        Delete "$aamSessionProfiles.aam-upgrade-backup"
+      ${endif}
+    FunctionEnd
+
+    Function .onInstFailed
+      Call aamRestoreSessionProfiles
+      ${if} ${Errors}
+        DetailPrint "Profile metadata backup retained at $aamSessionProfiles.aam-upgrade-backup"
+      ${endif}
+    FunctionEnd
+  !endif
+!macroend
+
+!macro customInit
+  SetShellVarContext current
+  StrCpy $aamSessionProfiles "$APPDATA\ClaudeAccountManager\automation\session-profiles.json"
+  ${if} $installMode == "all"
+    SetShellVarContext all
+  ${endif}
+  ClearErrors
+  Call aamRestoreSessionProfiles
+  ${if} ${Errors}
+    Abort "Could not restore the previous profile metadata backup. Existing data has been retained."
+  ${endif}
+  ${if} ${FileExists} "$aamSessionProfiles"
+    ClearErrors
+    CopyFiles /SILENT "$aamSessionProfiles" "$aamSessionProfiles.aam-upgrade-backup"
+    ${if} ${Errors}
+      Abort "Could not preserve session profile metadata. Installation stopped before removing the old version."
+    ${endif}
+  ${endif}
+!macroend
+
+!macro customInstall
+  ClearErrors
+  Call aamRestoreSessionProfiles
+  ${if} ${Errors}
+    Abort "Could not restore session profile metadata. The backup remains beside session-profiles.json."
+  ${endif}
+!macroend
+
 !macro customFinishPage
   ; Defining customFinishPage replaces electron-builder's entire default finish
   ; page, so its "run the app when I'm done" behaviour is reproduced verbatim
@@ -42,15 +99,16 @@
   ; Stop the per-user sidecar if an uninstall is started while the app is open.
   nsExec::ExecToLog '"$SYSDIR\taskkill.exe" /F /IM "AIAccountManager.Automation.exe"'
 
-  ; Electron's user-level start-at-login entry must not outlive the app.
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "AI Account Manager"
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ai-account-manager-desktop"
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Claude Account Manager"
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "claude-account-manager-desktop"
+  ; Preserve login behavior during upgrades; remove it on a true uninstall.
+  ${ifNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "AI Account Manager"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ai-account-manager-desktop"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Claude Account Manager"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "claude-account-manager-desktop"
+  ${endif}
 
-  ; Remove launcher metadata and stale locks, while deliberately preserving
-  ; browser-profiles because they contain vendor-owned signed-in sessions.
-  Delete "$APPDATA\ClaudeAccountManager\automation\session-profiles.json"
+  ; Preserve all durable account/profile metadata and signed-in browser data.
+  ; Only stale locks are disposable after stopping the sidecar.
   RMDir /r "$APPDATA\ClaudeAccountManager\automation\profile-locks"
 
   ; Claude Code, the Codex CLI and VS Code are deliberately NOT uninstalled.

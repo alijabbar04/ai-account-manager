@@ -55,7 +55,13 @@ function Assert-InstallerDownload {
     try {
         if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw 'Downloaded asset is not a Windows executable.' }
     } finally { $stream.Dispose() }
-    if ($item.VersionInfo.ProductVersion -ne $Version) { throw 'Installer product version does not match the release.' }
+    if (-not (Test-ApplicationProductVersion $item.VersionInfo.ProductVersion $Version)) { throw 'Installer product version does not match the release.' }
+}
+
+function Test-ApplicationProductVersion {
+    param([string]$Actual, [string]$Expected)
+    # Windows executable resources may append a zero revision to the npm version.
+    return ($Actual -ceq $Expected -or $Actual -ceq "$Expected.0")
 }
 
 function Test-InstalledVersion {
@@ -64,7 +70,7 @@ function Test-InstalledVersion {
         foreach ($entry in @(Get-ItemProperty "$registryRoot\*" -ErrorAction SilentlyContinue)) {
             if ($entry.DisplayName -eq 'AI Account Manager' -and $entry.DisplayVersion -eq $Version -and $entry.InstallLocation) {
                 $exe = Join-Path $entry.InstallLocation 'AI Account Manager.exe'
-                if ((Test-Path -LiteralPath $exe) -and (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -eq $Version) { return $true }
+                if ((Test-Path -LiteralPath $exe) -and (Test-ApplicationProductVersion (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion $Version)) { return $true }
             }
         }
     }

@@ -6,7 +6,9 @@ const asar = require("@electron/asar");
 const { verifyVersion, inspectPE } = require("./release-lib.cjs");
 const root = path.resolve(__dirname, "..");
 const version = verifyVersion(root);
-const resources = path.join(root, "release/win-unpacked/resources");
+const resources = process.argv[2]
+  ? path.resolve(process.argv[2])
+  : path.join(root, "release/win-unpacked/resources");
 const archive = path.join(resources, "app.asar");
 const packaged = JSON.parse(asar.extractFile(archive, "package.json"));
 assert.equal(

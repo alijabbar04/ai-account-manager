@@ -66,6 +66,10 @@ if (Test-Path $exe) {
     if ($LASTEXITCODE -ne 0) { throw 'Windows installer version verification failed.' }
     & powershell.exe -NoProfile -NonInteractive -File (Join-Path $repo 'tests\install-smoke.ps1') -Installer $exe
     if ($LASTEXITCODE -ne 0) { throw 'Standalone installer smoke checks failed.' }
+    node.exe (Join-Path $repo 'scripts\verify-installer-preservation.cjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Installer user-data preservation checks failed.' }
+    node.exe (Join-Path $repo 'scripts\verify-installer-payload.cjs') $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Actual installer payload verification failed.' }
     $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
     Write-Host "`nDONE: $exe ($mb MB)" -ForegroundColor Green
     Write-Host ""

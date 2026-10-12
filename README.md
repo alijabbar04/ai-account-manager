@@ -342,6 +342,11 @@ the installer on Windows, inspect the checksums and notes, then explicitly
 publish the draft in GitHub Releases. Already-public versions cannot be overwritten
 by this workflow. The one-command installer sees the new version only after publication.
 
+Installer validation also extracts the actual EXE payload, checks its current
+runtime/UI and resources against source, and runs four isolated NSIS user-data
+preservation scenarios. Upgrades protect Automation/Session profile metadata
+from the older uninstaller; future uninstalls retain durable user data.
+
 Repository administration: require the Windows CI `test-and-package` check on
 `main` and use reviewed PRs. As of this investigation, `main` has no branch
 protection, so CI can report a failure without preventing a direct push.

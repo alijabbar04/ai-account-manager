@@ -179,6 +179,36 @@ including Antigravity integration, reaches the installer intact.
 
 ## Remaining limits and publication checklist
 
+### Release-readiness review follow-up
+
+Independent review of PR #16 found two remaining issues before merge:
+
+1. The existing v1.7.1 uninstaller deletes `automation/session-profiles.json`
+   even on upgrade. The new installer now preserves that metadata in a durable
+   backup beside the original before invoking the legacy uninstaller, restores
+   it only if removed, and attempts restoration if installation fails. Future
+   uninstallers preserve durable profile metadata; only transient locks are
+   removed. App-data deletion is explicitly disabled and upgrade cleanup retains
+   start-at-login registration. Other account, credential, settings and vault
+   files are not copied or changed by these hooks.
+2. The built application has Windows ProductVersion `1.7.5.0`, equivalent to
+   npm version `1.7.5`. The standalone script's exact comparison would reject
+   installation success. It now accepts only the expected version or its zero
+   revision form; other versions and nonzero revisions still fail.
+
+Build validation now extracts the actual NSIS EXE's application payload and
+compares its full runtime, UI and resources with source, including application
+identity and version. Four compiled NSIS hook scenarios use only isolated
+synthetic data/registry paths: fresh setup, legacy upgrade, failed upgrade, and
+uninstall preservation. These are actual hook executions, not full application
+installations. The installer script also tests real built application version
+resources with mocked registry metadata.
+
+Windows Sandbox, VirtualBox and QEMU were unavailable during this review. A
+complete isolated interactive installation/launch/uninstall on a fresh Windows
+profile is therefore not claimed. No production install was attempted on the
+developer's real profile, and no real account credentials were used.
+
 - Require the Windows CI `test-and-package` status on `main` through repository
   branch protection. No repository administration setting was changed here.
 - The installer is unsigned in this environment; SmartScreen behavior and signing
