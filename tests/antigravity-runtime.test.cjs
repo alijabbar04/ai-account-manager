@@ -234,3 +234,85 @@ test("failed authentication checks never promote cached account details to signe
   assert.equal(status.usageAvailable, false);
   assert.deepEqual(status.limits, []);
 });
+
+test("denied CIM and TCP cmdlets fall back to Get-Process and netstat", async () => {
+  const commands = [];
+  const { runtime, calls } = runtimeFixture({
+    listServers: undefined,
+    execFile: (executable, args, _options, callback) => {
+      const script = args.at(-1);
+      commands.push(executable === "netstat.exe" ? "netstat" : script);
+      if (
+        script.includes("Get-CimInstance") ||
+        script.includes("Get-NetTCPConnection")
+      )
+        return callback(new Error("Access denied"), "");
+      if (script.includes("Get-Process"))
+        return callback(
+          null,
+          JSON.stringify([
+            {
+              Name: "agy.exe",
+              ProcessId: 10,
+              ExecutablePath: "C:\\Gemini\\agy.exe",
+            },
+            {
+              Name: "language_server.exe",
+              ProcessId: 20,
+              ExecutablePath: "C:\\Antigravity\\language_server.exe",
+            },
+          ]),
+        );
+      if (executable === "netstat.exe")
+        return callback(
+          null,
+          [
+            "  TCP    127.0.0.1:3100    0.0.0.0:0    LISTENING    10",
+            "  TCP    127.0.0.1:3200    0.0.0.0:0    LISTENING    20",
+            "  TCP    127.0.0.1:9999    0.0.0.0:0    ESTABLISHED  20",
+          ].join("\r\n"),
+        );
+      return callback(null, "[]");
+    },
+  });
+  const status = await runtime.status();
+  assert.equal(status.loggedIn, true);
+  assert.ok(commands.some((command) => command.includes("Get-Process")));
+  assert.ok(commands.includes("netstat"));
+  assert.ok(calls.every(([port]) => port === 3200));
+});
+
+test("working CIM and TCP cmdlets retain native-first discovery", async () => {
+  const commands = [];
+  const { runtime, calls } = runtimeFixture({
+    listServers: undefined,
+    execFile: (executable, args, _options, callback) => {
+      const script = args.at(-1);
+      commands.push(script);
+      if (script.includes("Get-CimInstance"))
+        return callback(
+          null,
+          JSON.stringify([
+            {
+              Name: "agy.exe",
+              ProcessId: 10,
+              CommandLine: "--app_data_dir=antigravity",
+            },
+            { Name: "language_server.exe", ProcessId: 20 },
+          ]),
+        );
+      if (script.includes("Get-NetTCPConnection"))
+        return callback(
+          null,
+          JSON.stringify([
+            { OwningProcess: 10, LocalPort: 3100 },
+            { OwningProcess: 20, LocalPort: 3200 },
+          ]),
+        );
+      return callback(null, "[]");
+    },
+  });
+  assert.equal((await runtime.status()).loggedIn, true);
+  assert.ok(commands.every((command) => !command.includes("Get-Process")));
+  assert.ok(calls.every(([port]) => port === 3200));
+});

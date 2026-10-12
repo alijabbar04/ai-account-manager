@@ -11,6 +11,7 @@ not full histories.
 
 ### Fixed
 
+- Detect Antigravity language servers when Windows denies CIM process and TCP queries, using Get-Process and netstat while keeping native app account isolation.
 - Automatically show the first Claude profile on the Dashboard, including existing installs with unassigned profiles. Persist one selected profile with the existing atomic writer; preserve explicit clearing and personal profile isolation.
 - Add Show on Dashboard / Remove from Dashboard actions to Claude account menus, independent of terminal defaults and Other Accounts layout. Selecting a hidden profile restores its visibility.
 - Fix the Claude account menu render crash caused by stale default-action references. Add a top-level error boundary with a Reload panel.

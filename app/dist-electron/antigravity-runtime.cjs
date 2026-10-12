@@ -9,17 +9,17 @@ const SERVICE = "/exa.language_server_pb.LanguageServerService/";
 // Antigravity 2.x and its VS Code extension share the Gemini data directory but
 // can have different in-memory authentication. Prefer the native app's server.
 const PROCESS_QUERY = `
-$servers = @(Get-CimInstance Win32_Process -Filter "Name = 'language_server.exe' or Name = 'language_server_windows_x64.exe' or Name = 'agy.exe'" -ErrorAction SilentlyContinue)
-$listeners = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue)
-@($servers | ForEach-Object {
-  $server = $_
-  [pscustomobject]@{
-    name = $server.Name
-    commandLine = $server.CommandLine
-    executablePath = $server.ExecutablePath
-    ports = @($listeners | Where-Object { $_.OwningProcess -eq $server.ProcessId } | Select-Object -ExpandProperty LocalPort -Unique)
-  }
-}) | ConvertTo-Json -Depth 4 -Compress
+@(Get-CimInstance Win32_Process -Filter "Name = 'language_server.exe' or Name = 'language_server_windows_x64.exe' or Name = 'agy.exe'" -ErrorAction Stop | Select-Object Name,ProcessId,CommandLine,ExecutablePath) | ConvertTo-Json -Compress
+`;
+
+const PROCESS_FALLBACK_QUERY = `
+@(Get-Process -Name 'language_server','language_server_windows_x64','agy' -ErrorAction SilentlyContinue | ForEach-Object {
+  [pscustomobject]@{ Name = $_.ProcessName + '.exe'; ProcessId = $_.Id; ExecutablePath = $_.Path }
+}) | ConvertTo-Json -Compress
+`;
+
+const PORT_QUERY = `
+@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Select-Object OwningProcess,LocalPort) | ConvertTo-Json -Compress
 `;
 
 const INSTALL_QUERY = `
@@ -110,6 +110,19 @@ function quotaLimits(response) {
   return rows;
 }
 
+function parseNetstat(output) {
+  const ports = [];
+  for (const line of String(output).split(/\r?\n/)) {
+    const match = line.match(/^\s*TCP\s+(\S+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i);
+    if (!match) continue;
+    const port = Number(match[1].match(/:(\d+)$/)?.[1]);
+    const owningProcess = Number(match[2]);
+    if (Number.isInteger(port) && port > 0 && port <= 65535)
+      ports.push({ OwningProcess: owningProcess, LocalPort: port });
+  }
+  return ports;
+}
+
 function requestLocal(service, method, body, timeoutMs = 6000) {
   return new Promise((resolve, reject) => {
     // All URLs are constructed here from validated local ports, never supplied
@@ -190,23 +203,58 @@ function createAntigravityRuntime(options = {}) {
   let loginPromise = null;
   let loginError = null;
 
-  function runPowerShell(script) {
+  function runCommand(executable, args, parse) {
     return new Promise((resolve) => {
       execFile(
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", script],
+        executable,
+        args,
         { windowsHide: true, timeout: 10000, maxBuffer: 512 * 1024 },
         (error, stdout) => {
-          if (error) return resolve([]);
+          if (error) return resolve({ ok: false, rows: [] });
           try {
-            const data = JSON.parse(String(stdout).trim() || "[]");
-            resolve(Array.isArray(data) ? data : [data]);
+            const data = parse(String(stdout));
+            resolve({ ok: true, rows: Array.isArray(data) ? data : [data] });
           } catch {
-            resolve([]);
+            resolve({ ok: false, rows: [] });
           }
         },
       );
     });
+  }
+
+  function runPowerShell(script) {
+    return runCommand(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      (output) => JSON.parse(output.trim() || "[]"),
+    );
+  }
+
+  async function listServers() {
+    const primary = await runPowerShell(PROCESS_QUERY);
+    const processes = primary.ok
+      ? primary.rows
+      : (await runPowerShell(PROCESS_FALLBACK_QUERY)).rows;
+    if (!processes.length) return [];
+    const listeners = await runPowerShell(PORT_QUERY);
+    const portRows = listeners.ok
+      ? listeners.rows
+      : (await runCommand("netstat.exe", ["-ano", "-p", "tcp"], parseNetstat))
+          .rows;
+    const portsByPid = new Map();
+    for (const row of portRows) {
+      const pid = Number(row.OwningProcess);
+      const port = Number(row.LocalPort);
+      if (!Number.isInteger(pid) || !Number.isInteger(port)) continue;
+      if (!portsByPid.has(pid)) portsByPid.set(pid, new Set());
+      portsByPid.get(pid).add(port);
+    }
+    return processes.map((server) => ({
+      name: server.Name,
+      commandLine: server.CommandLine,
+      executablePath: server.ExecutablePath,
+      ports: [...(portsByPid.get(Number(server.ProcessId)) || [])],
+    }));
   }
 
   function isExecutable(candidate) {
@@ -248,7 +296,7 @@ function createAntigravityRuntime(options = {}) {
       }
       let executable = candidates.find(isExecutable);
       if (!executable && (options.platform ?? process.platform) === "win32") {
-        for (const installed of await runPowerShell(INSTALL_QUERY)) {
+        for (const installed of (await runPowerShell(INSTALL_QUERY)).rows) {
           const icon = installed.DisplayIcon?.replace(/^"|"$/g, "").replace(
             /,\s*-?\d+$/,
             "",
@@ -298,7 +346,7 @@ function createAntigravityRuntime(options = {}) {
       return serviceCache;
     const processes = options.listServers
       ? await options.listServers()
-      : await runPowerShell(PROCESS_QUERY);
+      : await listServers();
     const servers = processes
       .filter((server) => {
         if (server.name?.toLowerCase() !== "agy.exe") return true;
@@ -504,4 +552,5 @@ module.exports = {
   createRuntime: createAntigravityRuntime,
   detectedPlan,
   quotaLimits,
+  parseNetstat,
 };
