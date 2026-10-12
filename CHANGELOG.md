@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 Releases before 1.4.1 predate this repository; entries for them are summaries,
 not full histories.
 
+## [1.7.8] — 2026-10-12
+
+### Added
+
+- Default-on Settings switch to run the verified native Antigravity app quietly for usage when it is not already running. Keep the existing local RPC detection and cached-status policy.
+- Hide owned windows immediately and for 60 seconds; apply Idle priority and EcoQoS to owned Antigravity and bundled language-server children for three minutes. Restore windows and original scheduling when the user opens the background copy.
+- Track process creation times as well as PIDs, exclude agy.exe and user-started copies, and close only owned processes gracefully before a five-second force-close deadline. A PowerShell watchdog also cleans up when an update/uninstall force-stops Account Manager.
+- Show background startup in the Antigravity card and poll every two seconds during startup so usage appears promptly.
+
 ## [1.7.7] — 2026-10-12
 
 ### Fixed

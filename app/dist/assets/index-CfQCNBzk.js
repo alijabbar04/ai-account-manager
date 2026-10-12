@@ -14385,10 +14385,19 @@ function AntigravityCard({ now, refreshSignal }) {
     try {
       setStatus(await window.cam.antigravity.status());
     } catch (value) {
-      setStatus({
-        loggedIn: null,
-        error: value.message ?? "Account status unavailable.",
-      });
+      setStatus((previous) =>
+        previous?.loggedIn === true
+          ? {
+              ...previous,
+              stale: true,
+              message:
+                "Antigravity is temporarily unavailable. Showing the last verified status.",
+            }
+          : {
+              loggedIn: null,
+              error: value.message ?? "Account status unavailable.",
+            },
+      );
     } finally {
       busy.current = false;
       setRefreshing(false);
@@ -14396,7 +14405,15 @@ function AntigravityCard({ now, refreshSignal }) {
   }, []);
   q.useEffect(() => {
     refresh();
-    const timer = window.setInterval(refresh, 60000);
+    const began = Date.now();
+    let lastPoll = began;
+    const timer = window.setInterval(() => {
+      const current = Date.now();
+      if (current - began < 60000 || current - lastPoll >= 60000) {
+        lastPoll = current;
+        refresh();
+      }
+    }, 2000);
     const visible = () => {
       if (document.visibilityState === "visible") refresh();
     };
@@ -14478,6 +14495,13 @@ function AntigravityCard({ now, refreshSignal }) {
                   status.message ??
                   "Usage is temporarily unavailable."),
           }),
+      status?.stale &&
+        status.message &&
+        i.jsx("p", {
+          className: "hint",
+          role: "status",
+          children: status.message,
+        }),
       i.jsxs("footer", {
         className: "card-actions",
         children: [
@@ -14490,7 +14514,12 @@ function AntigravityCard({ now, refreshSignal }) {
               children: pending === "signin" ? "Opening…" : "Sign in",
             }),
           ...[
-            ["app", "Open Antigravity"],
+            [
+              "app",
+              status?.starting
+                ? "Starting Antigravity in the background…"
+                : "Open Antigravity",
+            ],
             ["vscode", "Open in VS Code"],
             ["project", "Open VS Code project…"],
           ].map(([kind, label]) =>
@@ -19202,6 +19231,54 @@ function AutomationSessionsView({ showToast: f }) {
     ],
   });
 }
+function AntigravityBackgroundSettings({ showToast }) {
+  const [enabled, setEnabled] = q.useState(null);
+  const [saving, setSaving] = q.useState(false);
+  q.useEffect(() => {
+    window.cam.antigravity
+      .getBackground()
+      .then(setEnabled)
+      .catch(() => showToast("Could not load Antigravity settings."));
+  }, []);
+  const change = async (value) => {
+    setSaving(true);
+    try {
+      setEnabled(await window.cam.antigravity.setBackground(value));
+      showToast("Antigravity background setting saved.");
+    } catch {
+      showToast("Could not save Antigravity settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return i.jsxs("section", {
+    className: "panel",
+    children: [
+      i.jsx("h2", { className: "panel-title", children: "Antigravity usage" }),
+      i.jsxs("label", {
+        className: "check",
+        children: [
+          i.jsx("input", {
+            type: "checkbox",
+            role: "switch",
+            checked: enabled === true,
+            disabled: enabled === null || saving,
+            onChange: (event) => change(event.target.checked),
+          }),
+          i.jsx("span", {
+            children: "Run Antigravity quietly in the background for usage",
+          }),
+        ],
+      }),
+      i.jsx("p", {
+        className: "hint",
+        children:
+          "Starts the installed app hidden and at low priority to read usage. Opening Antigravity gives you its window; turning this off closes only the background copy we started.",
+      }),
+    ],
+  });
+}
+
 function ProfileVisibilitySettings({ showToast: f }) {
   const [o, v] = q.useState(null),
     [d, x] = q.useState(null);
@@ -19241,6 +19318,7 @@ function ProfileVisibilitySettings({ showToast: f }) {
         className: "view-head",
         children: i.jsx("h1", { children: "Settings" }),
       }),
+      i.jsx(AntigravityBackgroundSettings, { showToast: f }),
       i.jsxs("section", {
         className: "panel visibility-settings",
         children: [

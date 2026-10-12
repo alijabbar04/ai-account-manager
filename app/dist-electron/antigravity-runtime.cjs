@@ -130,9 +130,15 @@ function isNativeServer(server, _processes, executable) {
   if (!server.executablePath || !executable) return false;
   const serverPath = path.win32.normalize(server.executablePath).toLowerCase();
   const appPath = path.win32.normalize(executable).toLowerCase();
-  if (/^Antigravity(?:\.exe)?$/i.test(server.name || "")) return serverPath === appPath;
+  if (/^Antigravity(?:\.exe)?$/i.test(server.name || ""))
+    return serverPath === appPath;
   if (/^language_server(?:\.exe)?$/i.test(server.name || "")) {
-    const bundled = path.win32.join(path.win32.dirname(appPath), "resources", "bin", "language_server.exe");
+    const bundled = path.win32.join(
+      path.win32.dirname(appPath),
+      "resources",
+      "bin",
+      "language_server.exe",
+    );
     return serverPath === bundled;
   }
   return false;
@@ -421,11 +427,16 @@ function createAntigravityRuntime(options = {}) {
     if (!executable)
       return { ...base, message: "Antigravity is not installed." };
     let service = await findService({ nativeOnly: true });
-    if (!service)
+    if (!service) {
+      const starting = options.getBackground?.()?.state().starting === true;
       return {
         ...base,
-        message: "Open Antigravity to detect its account and plan.",
+        starting,
+        message: starting
+          ? "Starting Antigravity in the background…"
+          : "Open Antigravity to detect its account and plan.",
       };
+    }
     const auth = service.auth;
     if (!auth.hasToken)
       return {
@@ -526,6 +537,7 @@ function createAntigravityRuntime(options = {}) {
   }
 
   async function launch() {
+    if (await options.getBackground?.()?.show()) return { ok: true };
     const executable = await discover();
     if (!executable)
       return {

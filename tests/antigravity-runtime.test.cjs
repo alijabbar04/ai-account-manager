@@ -585,10 +585,58 @@ test("overlapping status requests share a native probe and result", async () => 
 
 test("newer Antigravity: bundled language_server inside the install folder is native; elsewhere it is not", () => {
   const app = String.raw`C:\Users\u\AppData\Local\Programs\Antigravity\Antigravity.exe`;
-  const bundled = { name: "language_server.exe", executablePath: String.raw`C:\Users\u\AppData\Local\Programs\Antigravity\resources\bin\language_server.exe` };
-  const stray = { name: "language_server.exe", executablePath: String.raw`C:\Temp\resources\bin\language_server.exe` };
-  const agy = { name: "agy.exe", executablePath: String.raw`C:\Users\u\.gemini\bin\agy.exe` };
+  const bundled = {
+    name: "language_server.exe",
+    executablePath: String.raw`C:\Users\u\AppData\Local\Programs\Antigravity\resources\bin\language_server.exe`,
+  };
+  const stray = {
+    name: "language_server.exe",
+    executablePath: String.raw`C:\Temp\resources\bin\language_server.exe`,
+  };
+  const agy = {
+    name: "agy.exe",
+    executablePath: String.raw`C:\Users\u\.gemini\bin\agy.exe`,
+  };
   assert.equal(isNativeServer(bundled, [], app), true);
   assert.equal(isNativeServer(stray, [], app), false);
   assert.equal(isNativeServer(agy, [], app), false);
+});
+
+test("background startup status retains the existing detection path and last-good grace", async () => {
+  let starting = true,
+    servers;
+  const { fixture } = runtimeFixture();
+  servers = await fixture.listServers();
+  const runtime = createRuntime({
+    ...fixture,
+    getBackground: () => ({ state: () => ({ starting }) }),
+    listServers: async () => servers,
+  });
+  const good = await runtime.status();
+  servers = [];
+  assert.deepEqual((await runtime.status()).limits, good.limits);
+  const empty = createRuntime({
+    ...fixture,
+    getBackground: () => ({ state: () => ({ starting }) }),
+    listServers: async () => [],
+  });
+  const status = await empty.status();
+  assert.equal(status.starting, true);
+  assert.equal(status.message, "Starting Antigravity in the background…");
+  starting = false;
+  assert.match((await empty.status()).message, /Open Antigravity/);
+});
+test("native Open restores an owned background copy rather than spawning a duplicate", async () => {
+  let shown = 0;
+  const { runtime, calls } = runtimeFixture({
+    getBackground: () => ({
+      show: async () => {
+        shown++;
+        return true;
+      },
+    }),
+  });
+  assert.deepEqual(await runtime.launch(), { ok: true });
+  assert.equal(shown, 1);
+  assert.deepEqual(calls, []);
 });

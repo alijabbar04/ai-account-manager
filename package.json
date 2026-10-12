@@ -1,7 +1,7 @@
 {
   "name": "ai-account-manager-desktop",
   "productName": "AI Account Manager",
-  "version": "1.7.7",
+  "version": "1.7.8",
   "description": "Manage Claude accounts, GPT/Codex usage, provider permissions, alerts, and API analytics.",
   "private": true,
   "main": "app/dist-electron/main.cjs",
@@ -94,6 +94,9 @@
       "shortcutName": "AI Account Manager",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
-    }
+    },
+    "asarUnpack": [
+      "dist-electron/antigravity-background.ps1"
+    ]
   }
 }

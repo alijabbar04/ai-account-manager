@@ -39,7 +39,15 @@ const { reconcileCodexAccountPlan } = require("./codex-plan-domain.cjs");
 const { ClaudePlanService } = require("./claude-plan-runtime.cjs");
 const claudePlans = new ClaudePlanService();
 const { createAntigravityRuntime } = require("./antigravity-runtime.cjs");
-const antigravity = createAntigravityRuntime({ spawnDetachedExecutable });
+const { createAntigravityBackground } = require("./antigravity-background.cjs");
+let antigravityBackground;
+const antigravity = createAntigravityRuntime({
+  spawnDetachedExecutable,
+  getBackground: () => antigravityBackground,
+});
+function createBackgroundAntigravity() {
+  return createAntigravityBackground({ discover: antigravity.discover });
+}
 // electron/main.ts
 var import_electron5 = require("electron");
 var path12 = __toESM(require("node:path"));
@@ -3444,6 +3452,7 @@ function loadSettings() {
   const normalized = {
     ...migrated,
     theme: saved.theme ?? "system",
+    antigravityBackground: saved.antigravityBackground !== false,
     alerts: { ...DEFAULT_ALERT_SETTINGS, ...(saved.alerts ?? {}) },
     alertState: saved.alertState ?? {},
     updates: { ...DEFAULT_UPDATE_SETTINGS, ...(saved.updates ?? {}) },
@@ -4656,6 +4665,26 @@ var Backend = class {
         return { ok: false, error: err.message };
       }
     });
+    import_electron4.ipcMain.handle(
+      "antigravity:background:get",
+      () => loadSettings().antigravityBackground,
+    );
+    import_electron4.ipcMain.handle(
+      "antigravity:background:set",
+      async (_event, enabled) => {
+        if (typeof enabled !== "boolean")
+          throw new Error("Expected a boolean setting");
+        saveSettings({ antigravityBackground: enabled });
+        if (enabled) {
+          antigravityBackground ??= createBackgroundAntigravity();
+          await antigravityBackground.configure(true);
+        } else {
+          await antigravityBackground?.shutdown();
+          antigravityBackground = undefined;
+        }
+        return enabled;
+      },
+    );
     import_electron4.ipcMain.handle("antigravity:status", () =>
       antigravity.status(),
     );
@@ -4959,6 +4988,10 @@ void import_electron5.app.whenReady().then(async () => {
   await backend.init();
   createWindow();
   syncTray();
+  if (loadSettings().antigravityBackground) {
+    antigravityBackground ??= createBackgroundAntigravity();
+    void antigravityBackground.configure(true);
+  }
   import_electron5.app.on("activate", () => {
     showMainWindow();
   });
@@ -4974,8 +5007,16 @@ import_electron5.app.on("window-all-closed", () => {
     import_electron5.app.quit();
   }
 });
-import_electron5.app.on("before-quit", () => {
+let antigravityQuitComplete = false;
+import_electron5.app.on("before-quit", (event) => {
   isQuitting = true;
+  if (!antigravityQuitComplete && antigravityBackground) {
+    event.preventDefault();
+    void antigravityBackground.shutdown().finally(() => {
+      antigravityQuitComplete = true;
+      import_electron5.app.quit();
+    });
+  }
   import_electron5.globalShortcut.unregisterAll();
   void backend?.shutdown();
 });
