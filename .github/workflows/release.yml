@@ -97,7 +97,7 @@ jobs:
         run: npm run verify:release -- --tag "v${{ env.PACKAGE_VERSION }}" --artifacts --official
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ai-account-manager-windows-${{ env.PACKAGE_VERSION }}
           if-no-files-found: error
@@ -143,7 +143,7 @@ jobs:
 
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-failure-diagnostics
           if-no-files-found: ignore
