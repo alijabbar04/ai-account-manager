@@ -31,8 +31,8 @@
   },
   "devDependencies": {
     "electron": "^37.2.6",
-    "electron-builder": "^26.0.12",
-    "prettier": "^3.6.2"
+    "electron-builder": "^26.18.0",
+    "prettier": "^3.9.10"
   },
   "build": {
     "appId": "io.github.ai-account-manager",
